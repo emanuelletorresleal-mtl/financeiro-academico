@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="88" fill="#147a4b"/>
+  <path d="M116 334c74 20 143-6 184-63 31-43 36-91 36-91-61 2-116 21-158 58-36 31-55 68-62 96Z" fill="#dff4e7"/>
+  <path d="M181 317c51-58 106-86 183-96" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round"/>
+  <text x="256" y="414" text-anchor="middle" font-family="Arial, sans-serif" font-size="108" font-weight="800" fill="#ffffff">FA</text>
+</svg>

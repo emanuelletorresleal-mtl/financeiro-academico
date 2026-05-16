@@ -1,0 +1,17 @@
+{
+  "name": "Financeiro Acadêmico",
+  "short_name": "Financeiro",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5fbf7",
+  "theme_color": "#147a4b",
+  "description": "Controle financeiro pessoal para rotina acadêmica.",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

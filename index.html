@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#147a4b" />
+    <title>Financeiro Acadêmico</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section class="login-screen" id="loginScreen">
+      <div class="login-card">
+        <div class="brand-mark" aria-hidden="true">FA</div>
+        <h1>Financeiro Acadêmico</h1>
+        <p>Entre com Google para sincronizar seus dados entre notebook, computador e celular.</p>
+        <button class="primary-button" id="loginGoogle" type="button">Entrar com Google</button>
+        <small id="loginHint">Os dados locais serão importados para a nuvem após o primeiro login.</small>
+      </div>
+    </section>
+
+    <div class="app-shell" hidden>
+      <aside class="sidebar" aria-label="Navegação principal">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">FA</div>
+          <div>
+            <strong>Financeiro Acadêmico</strong>
+            <span>Emanuelle Torres Leal</span>
+          </div>
+        </div>
+
+        <nav class="nav-tabs" aria-label="Seções">
+          <button class="nav-tab active" data-section="dashboard">Dashboard</button>
+          <button class="nav-tab" data-section="setup">Configuração</button>
+          <button class="nav-tab" data-section="income">Receitas</button>
+          <button class="nav-tab" data-section="debts">Dívidas</button>
+          <button class="nav-tab" data-section="expenses">Gastos</button>
+          <button class="nav-tab" data-section="goals">Metas</button>
+          <button class="nav-tab" data-section="registry">Cadastros</button>
+          <button class="nav-tab" data-section="reports">Relatórios</button>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Mestrado em Engenharia Florestal</p>
+            <h1>Controle financeiro pessoal</h1>
+          </div>
+          <div class="topbar-actions">
+            <div class="sync-pill" id="syncStatus">Aguardando login</div>
+            <div class="user-panel" id="userPanel" hidden>
+              <img id="userPhoto" alt="" />
+              <div>
+                <strong id="userName"></strong>
+                <span id="userEmail"></span>
+              </div>
+              <button class="ghost-button" id="logoutGoogle" type="button">Sair</button>
+            </div>
+            <button class="ghost-button" id="resetData" type="button">Restaurar dados</button>
+            <button class="primary-button" id="printReport" type="button">PDF</button>
+            <button class="primary-button" id="exportExcel" type="button">Excel</button>
+          </div>
+        </header>
+
+        <section id="dashboard" class="section active">
+          <div class="alert-strip" id="alertStrip"></div>
+          <div class="metrics-grid" id="metricsGrid"></div>
+
+          <div class="dashboard-grid">
+            <article class="panel">
+              <div class="panel-header">
+                <h2>Gastos por categoria</h2>
+                <span id="topCategoryBadge"></span>
+              </div>
+              <div class="chart-layout">
+                <div class="donut" id="donutChart" role="img" aria-label="Gráfico de pizza por categoria"></div>
+                <div class="legend" id="categoryLegend"></div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <h2>Receita vs despesas</h2>
+                <span>Mês atual</span>
+              </div>
+              <div class="bar-chart" id="barChart" role="img" aria-label="Gráfico de receita contra despesas"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <h2>Por forma de pagamento</h2>
+                <span>Gastos do mês</span>
+              </div>
+              <div class="bar-chart compact" id="paymentChart" role="img" aria-label="Gráfico por forma de pagamento"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <h2>Cartões e parcelados</h2>
+                <span>Faturas e compras</span>
+              </div>
+              <div class="bar-chart compact" id="cardChart" role="img" aria-label="Gráfico por cartão e despesas parceladas"></div>
+            </article>
+
+            <article class="panel wide">
+              <div class="panel-header">
+                <h2>Despesas parceladas</h2>
+                <span>Parcela atual, restantes e quitação</span>
+              </div>
+              <div class="bar-chart compact" id="installmentChart" role="img" aria-label="Gráfico de despesas parceladas"></div>
+            </article>
+
+            <article class="panel wide">
+              <div class="panel-header">
+                <h2>Evolução do saldo</h2>
+                <span>Projeção de 6 meses</span>
+              </div>
+              <svg class="line-chart" id="lineChart" viewBox="0 0 720 220" role="img" aria-label="Evolução do saldo mensal"></svg>
+            </article>
+          </div>
+        </section>
+
+        <section id="setup" class="section">
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Configuração inicial</h2>
+              <span>Valores usados nos cálculos automáticos</span>
+            </div>
+            <div id="settingsForm" class="form-grid"></div>
+          </article>
+        </section>
+
+        <section id="income" class="section">
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Receitas</h2>
+              <span>Fixas, temporárias e extras</span>
+            </div>
+            <div class="action-row"><button class="primary-button" data-add="incomes" type="button">➕ Adicionar receita</button></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Nome</th><th>Valor</th><th>Tipo</th><th>Parcelas</th><th>Ações</th></tr>
+                </thead>
+                <tbody id="incomeTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section id="debts" class="section">
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Dívidas e parcelas</h2>
+              <span>Cronograma recalculado a cada pagamento</span>
+            </div>
+            <div class="action-row"><button class="primary-button" data-add="debts" type="button">➕ Adicionar dívida</button></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Despesa</th><th>Mensal</th><th>Total</th><th>Cartão</th><th>Parcela</th><th>Quitação</th><th>Status</th><th>Ações</th></tr>
+                </thead>
+                <tbody id="debtTable"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Cronograma de quitação</h2>
+              <span>Linha do tempo</span>
+            </div>
+            <div class="timeline" id="timeline"></div>
+          </article>
+        </section>
+
+        <section id="expenses" class="section">
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Gastos variáveis</h2>
+              <span>Registro por categoria e forma de pagamento</span>
+            </div>
+            <div class="action-row"><button class="primary-button" data-add="expenses" type="button">➕ Adicionar gasto</button></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Data</th><th>Categoria</th><th>Subcategoria</th><th>Descrição</th><th>Pagamento</th><th>Conta</th><th>Cartão</th><th>Parcelas</th><th>Valor</th><th>Ações</th></tr>
+                </thead>
+                <tbody id="expenseTable"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Créditos do RU</h2>
+              <span>Recargas, consumo e saldo</span>
+            </div>
+            <div class="action-row"><button class="primary-button" data-add="ruTransactions" type="button">➕ Registrar RU</button></div>
+            <div class="ru-summary" id="ruSummary"></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Valor</th><th></th></tr>
+                </thead>
+                <tbody id="ruTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section id="goals" class="section">
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Metas financeiras</h2>
+              <span>Reserva, pesquisa e próximos passos</span>
+            </div>
+            <div class="action-row"><button class="primary-button" data-add="goals" type="button">➕ Adicionar meta</button></div>
+            <div class="goal-grid" id="goalGrid"></div>
+          </article>
+        </section>
+
+        <section id="registry" class="section">
+          <div class="registry-grid">
+            <article class="panel">
+              <div class="panel-header"><h2>Categorias</h2><button class="primary-button" data-add="categories" type="button">➕ Adicionar</button></div>
+              <div class="entity-list" id="categoryList"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header"><h2>Subcategorias</h2><button class="primary-button" data-add="subcategories" type="button">➕ Adicionar</button></div>
+              <div class="entity-list" id="subcategoryList"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header"><h2>Formas de pagamento</h2><button class="primary-button" data-add="paymentMethods" type="button">➕ Adicionar</button></div>
+              <div class="entity-list" id="paymentMethodList"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header"><h2>Bancos</h2><button class="primary-button" data-add="banks" type="button">➕ Adicionar</button></div>
+              <div class="entity-list" id="bankList"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header"><h2>Cartões de crédito</h2><button class="primary-button" data-add="cards" type="button">➕ Adicionar</button></div>
+              <div class="entity-list" id="cardList"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-header"><h2>Contas bancárias</h2><button class="primary-button" data-add="accounts" type="button">➕ Adicionar</button></div>
+              <div class="entity-list" id="accountList"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="reports" class="section">
+          <article class="panel report-panel" id="reportContent">
+            <div class="panel-header">
+              <h2>Relatório inteligente</h2>
+              <span id="reportDate"></span>
+            </div>
+            <div class="report-grid" id="smartReport"></div>
+          </article>
+          <div class="export-row">
+            <button class="primary-button" id="exportCsv" type="button">CSV</button>
+            <button class="primary-button" id="exportPdf2" type="button">PDF</button>
+            <button class="primary-button" id="exportExcel2" type="button">Excel</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="modalBackdrop" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <h2 id="modalTitle">Cadastro</h2>
+          <button class="icon-button neutral" id="closeModal" type="button" aria-label="Fechar">×</button>
+        </div>
+        <form id="modalForm" class="modal-form"></form>
+      </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
