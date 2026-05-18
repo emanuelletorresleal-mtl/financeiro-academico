@@ -34,6 +34,7 @@
           <button class="nav-tab" data-section="setup">Configuração</button>
           <button class="nav-tab" data-section="income">Receitas</button>
           <button class="nav-tab" data-section="expenses">Gastos</button>
+          <button class="nav-tab" data-section="months">Meses</button>
           <button class="nav-tab" data-section="goals">Metas</button>
           <button class="nav-tab" data-section="registry">Cadastros</button>
           <button class="nav-tab" data-section="backup">Backup</button>
@@ -64,6 +65,22 @@
         </header>
 
         <section id="dashboard" class="section active">
+          <article class="panel month-control-panel">
+            <div class="panel-header">
+              <h2>Visão mensal</h2>
+              <span id="dashboardMonthStatus"></span>
+            </div>
+            <div class="month-toolbar">
+              <label class="field">
+                <span>Mês do dashboard</span>
+                <select id="dashboardMonthSelect"></select>
+              </label>
+              <button class="secondary-button" id="viewCurrentMonth" type="button">Ver mês atual</button>
+              <button class="secondary-button" id="viewAllMonths" type="button">Ver todos os meses</button>
+              <button class="secondary-button" id="compareMonths" type="button">Comparar meses</button>
+            </div>
+            <div class="comparison-box" id="monthComparison"></div>
+          </article>
           <div class="alert-strip" id="alertStrip"></div>
           <div class="metrics-grid" id="metricsGrid"></div>
 
@@ -121,6 +138,35 @@
           </div>
         </section>
 
+        <section id="months" class="section">
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Planejamento mensal</h2>
+              <span>Histórico, fechamento e próximos meses</span>
+            </div>
+            <div class="action-row">
+              <button class="primary-button" data-add="months" type="button">➕ Adicionar mês</button>
+              <button class="secondary-button" id="duplicatePreviousMonth" type="button">Duplicar mês anterior</button>
+            </div>
+            <div class="month-grid" id="monthGrid"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Histórico mensal</h2>
+              <span>Saldos, economia e gastos totais</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Mês</th><th>Status</th><th>Receita</th><th>Gastos</th><th>Saldo</th><th>Economia</th><th>Ações</th></tr>
+                </thead>
+                <tbody id="monthHistoryTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
         <section id="setup" class="section">
           <article class="panel">
             <div class="panel-header">
@@ -142,7 +188,7 @@
             <div class="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Nome</th><th>Valor</th><th>Tipo</th><th>Recebimento</th><th>Status</th><th>Parcelas</th><th>Ações</th></tr>
+                  <tr><th>Nome</th><th>Mês</th><th>Valor</th><th>Tipo</th><th>Recebimento</th><th>Status</th><th>Parcelas</th><th>Ações</th></tr>
                 </thead>
                 <tbody id="incomeTable"></tbody>
               </table>

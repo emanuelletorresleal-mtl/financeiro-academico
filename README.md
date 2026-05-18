@@ -167,8 +167,10 @@ Configuração atual:
 ## Recursos
 
 - Dashboard com indicadores financeiros, gráfico por categoria, forma de pagamento, cartões, receita vs gastos e projeção de saldo.
+- Aba **Meses** para planejamento mensal, histórico, fechamento, reabertura, duplicação de mês e comparação com mês anterior.
 - Aba única **Gastos** para despesas simples, fixas, vencimentos, parcelas, cartão de crédito, Pix, débito, dinheiro e RU.
 - Migração automática de dados antigos de `debts`, `installments` e `variableExpenses` para `expenses`.
+- Migração automática de gastos, receitas e metas sem referência mensal para o mês correto com base nas datas.
 - Receitas, gastos, compras parceladas e metas.
 - Categorias, subcategorias, formas de pagamento, bancos, cartões e contas editáveis.
 - Controle de créditos do RU com recargas, consumo e saldo.

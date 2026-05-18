@@ -642,6 +642,96 @@ tr.overdue {
   color: var(--white);
 }
 
+.month-control-panel {
+  margin-bottom: 16px;
+}
+
+.month-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.month-toolbar .field {
+  min-width: min(100%, 260px);
+}
+
+.month-toolbar .field span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.comparison-box {
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.month-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfefc;
+}
+
+.month-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.month-stats span {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.month-stats strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.month-notes {
+  color: var(--muted);
+}
+
+.month-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 850;
+  background: #eef1ef;
+  color: var(--muted);
+}
+
+.month-status.planejado {
+  background: #edf6ff;
+  color: #2563a8;
+}
+
+.month-status.aberto {
+  background: var(--green-100);
+  color: var(--green-800);
+}
+
+.month-status.fechado {
+  background: #eef1ef;
+  color: var(--muted);
+}
+
 .timeline {
   display: grid;
   gap: 10px;
@@ -893,7 +983,8 @@ tr.overdue {
   .goal-grid,
   .report-grid,
   .registry-grid,
-  .install-grid {
+  .install-grid,
+  .month-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -935,7 +1026,9 @@ tr.overdue {
   .goal-grid,
   .report-grid,
   .registry-grid,
-  .install-grid {
+  .install-grid,
+  .month-grid,
+  .month-stats {
     grid-template-columns: 1fr;
   }
 

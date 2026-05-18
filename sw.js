@@ -1,4 +1,4 @@
-const cacheName = "financeiro-academico-v7";
+const cacheName = "financeiro-academico-v8";
 
 const localAssets = [
   "./",
