@@ -33,7 +33,6 @@
           <button class="nav-tab active" data-section="dashboard">Dashboard</button>
           <button class="nav-tab" data-section="setup">Configuração</button>
           <button class="nav-tab" data-section="income">Receitas</button>
-          <button class="nav-tab" data-section="debts">Dívidas</button>
           <button class="nav-tab" data-section="expenses">Gastos</button>
           <button class="nav-tab" data-section="goals">Metas</button>
           <button class="nav-tab" data-section="registry">Cadastros</button>
@@ -151,47 +150,30 @@
           </article>
         </section>
 
-        <section id="debts" class="section">
-          <article class="panel">
-            <div class="panel-header">
-              <h2>Dívidas e parcelas</h2>
-              <span>Cronograma recalculado a cada pagamento</span>
-            </div>
-            <div class="action-row"><button class="primary-button" data-add="debts" type="button">➕ Adicionar dívida</button></div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr><th>Despesa</th><th>Mensal</th><th>Total</th><th>Pagamento</th><th>Cartão</th><th>Parcela</th><th>Quitação</th><th>Status</th><th>Ações</th></tr>
-                </thead>
-                <tbody id="debtTable"></tbody>
-              </table>
-            </div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-header">
-              <h2>Cronograma de quitação</h2>
-              <span>Linha do tempo</span>
-            </div>
-            <div class="timeline" id="timeline"></div>
-          </article>
-        </section>
-
         <section id="expenses" class="section">
           <article class="panel">
             <div class="panel-header">
-              <h2>Gastos variáveis</h2>
-              <span>Registro por categoria e forma de pagamento</span>
+              <h2>Gastos</h2>
+              <span>Gastos simples, fixos, contas, cartões e parcelas</span>
             </div>
             <div class="action-row"><button class="primary-button" data-add="expenses" type="button">➕ Adicionar gasto</button></div>
+            <div class="filter-row" id="expenseFilters"></div>
             <div class="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Data</th><th>Categoria</th><th>Subcategoria</th><th>Descrição</th><th>Pagamento</th><th>Conta</th><th>Cartão</th><th>Parcelas</th><th>Valor</th><th>Ações</th></tr>
+                  <tr><th>Vencimento</th><th>Status</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Pagamento</th><th>Banco/Cartão</th><th>Parcela</th><th>Ações</th></tr>
                 </thead>
                 <tbody id="expenseTable"></tbody>
               </table>
             </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Cronograma de vencimentos e parcelas</h2>
+              <span>Vencimentos por mês, parcelas, quitados e atrasados</span>
+            </div>
+            <div class="timeline" id="timeline"></div>
           </article>
 
           <article class="panel">

@@ -16,6 +16,8 @@
   let lastSyncAt = localStorage.getItem("financeiro-academico-drive-last-sync") || "";
   let initAttempts = 0;
   let pendingTokenResolve = null;
+  let periodicSyncTimer = null;
+  let isSyncing = false;
 
   function isConfigured() {
     return Boolean(config.clientId && !config.clientId.startsWith("SEU_"));
@@ -107,6 +109,7 @@
       google.accounts.oauth2.revoke(accessToken, () => {});
     }
     accessToken = "";
+    stopPeriodicSync();
     userHandler?.(null);
     setStatus(navigator.onLine ? "Modo local" : "Offline");
   }
@@ -115,6 +118,7 @@
     setStatus("Conectado");
     await loadUserProfile();
     await syncOnLogin();
+    startPeriodicSync();
   }
 
   async function loadUserProfile() {
@@ -135,7 +139,7 @@
       setStatus("Offline");
       return;
     }
-    await compareAndSync({ askBeforeUpload: true });
+    await compareAndSync({ askBeforeUpload: true, source: "login" });
   }
 
   async function syncNow() {
@@ -146,50 +150,60 @@
     try {
       const hasToken = await ensureToken();
       if (!hasToken) return;
-      await compareAndSync({ askBeforeUpload: false });
+      await compareAndSync({ askBeforeUpload: false, source: "manual" });
     } catch (error) {
       console.error(error);
-      setStatus("Erro ao sincronizar");
+      setStatus("Erro de sincronização");
     }
   }
 
-  async function compareAndSync({ askBeforeUpload }) {
+  async function compareAndSync({ askBeforeUpload, source = "manual" }) {
+    if (isSyncing) return;
+    isSyncing = true;
     setStatus("Sincronizando...");
-    const file = await findOrCreateFile();
-    if (!file) return;
-    const remotePayload = await downloadPayload(file.id);
-    if (!remotePayload?.data) {
-      await uploadState();
-      return;
-    }
-
-    const remoteTime = Date.parse(remotePayload.updatedAt || 0);
-    const localTime = Date.parse(localStorage.getItem("financeiro-academico-local-updated-at") || 0);
-
-    if (remoteTime > localTime) {
-      if (confirm("O backup do Google Drive é mais recente. Deseja atualizar os dados locais deste dispositivo?")) {
-        isApplyingRemote = true;
-        applyState(remotePayload.data);
-        isApplyingRemote = false;
-        markSynced(remotePayload.updatedAt);
-        setStatus("Sincronizado");
-        return;
-      }
-      setStatus("Sincronizado");
-      return;
-    }
-
-    if (localTime > remoteTime) {
-      if (!askBeforeUpload || confirm("Os dados locais são mais recentes. Deseja enviar estes dados para o Google Drive?")) {
+    try {
+      const file = await findOrCreateFile();
+      if (!file) return;
+      const remotePayload = await downloadPayload(file.id);
+      if (!remotePayload?.data) {
         await uploadState();
         return;
       }
-      setStatus("Sincronizado");
-      return;
-    }
 
-    markSynced(remotePayload.updatedAt);
-    setStatus("Dados já atualizados");
+      const remoteTime = Date.parse(remotePayload.updatedAt || 0);
+      const localTime = Date.parse(localStorage.getItem("financeiro-academico-local-updated-at") || 0);
+
+      if (remoteTime > localTime) {
+        setStatus("Nova versão encontrada");
+        if (confirm("Existe uma versão mais recente no Google Drive. Deseja atualizar os dados locais?")) {
+          isApplyingRemote = true;
+          applyState(remotePayload.data);
+          isApplyingRemote = false;
+          markSynced(remotePayload.updatedAt);
+          setStatus(source === "periodic" ? "Dados atualizados" : "Sincronizado");
+          return;
+        }
+        setStatus("Sincronizado");
+        return;
+      }
+
+      if (localTime > remoteTime) {
+        if (!askBeforeUpload || confirm("Os dados locais são mais recentes. Deseja enviar estes dados para o Google Drive?")) {
+          await uploadState();
+          return;
+        }
+        setStatus("Sincronizado");
+        return;
+      }
+
+      markSynced(remotePayload.updatedAt);
+      setStatus("Dados já atualizados");
+    } catch (error) {
+      console.error(error);
+      setStatus("Erro de sincronização");
+    } finally {
+      isSyncing = false;
+    }
   }
 
   async function restoreFromDrive() {
@@ -214,6 +228,20 @@
       console.error(error);
       setStatus("Erro");
     }
+  }
+
+  function startPeriodicSync() {
+    stopPeriodicSync();
+    periodicSyncTimer = setInterval(() => {
+      if (!accessToken || !navigator.onLine) return;
+      compareAndSync({ askBeforeUpload: false, source: "periodic" });
+    }, 60000);
+  }
+
+  function stopPeriodicSync() {
+    if (!periodicSyncTimer) return;
+    clearInterval(periodicSyncTimer);
+    periodicSyncTimer = null;
   }
 
   function scheduleSave() {

@@ -166,11 +166,13 @@ Configuração atual:
 
 ## Recursos
 
-- Dashboard com indicadores financeiros, gráfico por categoria, receita vs despesas e projeção de saldo.
-- Receitas, dívidas, compras parceladas, gastos variáveis e metas.
+- Dashboard com indicadores financeiros, gráfico por categoria, forma de pagamento, cartões, receita vs gastos e projeção de saldo.
+- Aba única **Gastos** para despesas simples, fixas, vencimentos, parcelas, cartão de crédito, Pix, débito, dinheiro e RU.
+- Migração automática de dados antigos de `debts`, `installments` e `variableExpenses` para `expenses`.
+- Receitas, gastos, compras parceladas e metas.
 - Categorias, subcategorias, formas de pagamento, bancos, cartões e contas editáveis.
 - Controle de créditos do RU com recargas, consumo e saldo.
-- Cronograma de quitação.
+- Cronograma de vencimentos e parcelas.
 - Relatórios inteligentes.
 - Backup JSON para migração manual.
 - Funcionamento offline como PWA.

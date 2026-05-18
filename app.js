@@ -5,6 +5,7 @@ let scheduleCloudSave = () => {};
 let deferredInstallPrompt = null;
 let driveStatus = { status: "Modo local", connected: false, lastSyncAt: "" };
 let suppressSyncSave = false;
+let expenseFilter = "Todos";
 
 function uid() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
@@ -177,6 +178,8 @@ function migrateState() {
   mergeDefaults("cards", defaultState.cards, "name");
   mergeDefaults("paymentMethods", defaultState.paymentMethods, "name");
   mergeDefaults("accounts", defaultState.accounts, "name");
+  migrateLegacyExpenseLists();
+  migrateDebtsToExpenses();
   state.expenses = state.expenses.map((expense) => ({
     ...expense,
     categoryId: resolveId("categories", expense.categoryId || expense.category, "Alimentação"),
@@ -186,6 +189,16 @@ function migrateState() {
     cardId: resolveId("cards", expense.cardId || expense.card, ""),
     installments: Number(expense.installments || 1),
     currentInstallment: Number(expense.currentInstallment || 1),
+    dueDate: expense.dueDate || dueDateFromDay(expense.dueDay || new Date(`${expense.date || isoDate(today)}T00:00:00`).getDate()),
+    date: expense.date || isoDate(today),
+    status: normalizeExpenseStatus(expense),
+    notes: expense.notes || "",
+    isInstallment: Boolean(expense.isInstallment || Number(expense.installments || 1) > 1),
+    totalValue: Number(expense.totalValue || expense.purchaseTotal || (Number(expense.installments || 1) > 1 ? Number(expense.value || 0) * Number(expense.installments || 1) : Number(expense.value || 0))),
+    installmentValue: Number(expense.installmentValue || expense.value || 0),
+    currentInstallment: Number(expense.currentInstallment || expense.current || 1),
+    lastInstallmentDate: expense.lastInstallmentDate || calculateLastInstallmentDate(expense),
+    bankOrCard: expense.bankOrCard || displayName("cards", expense.cardId, displayName("accounts", expense.accountId, "")),
   }));
   state.debts = state.debts.map((debt) => ({
     ...debt,
@@ -204,6 +217,145 @@ function migrateState() {
 
 function settingsToConfigItems(settings) {
   return defaultState.configItems.map((item) => ({ ...clone(item), value: settings?.[item.key] ?? item.value }));
+}
+
+function migrateDebtsToExpenses() {
+  if (!Array.isArray(state.debts) || !state.debts.length) return;
+  const alreadyMigrated = new Set(state.expenses.map((expense) => expense.migratedFromDebtId).filter(Boolean));
+  const moradiaId = byName(state.categories, "Moradia") || state.categories[0]?.id || "";
+  state.debts.forEach((debt) => {
+    if (alreadyMigrated.has(debt.id)) return;
+    state.expenses.push({
+      id: uid(),
+      migratedFromDebtId: debt.id,
+      description: debt.name,
+      categoryId: moradiaId,
+      subcategoryId: "",
+      value: Number(debt.value || 0),
+      installmentValue: Number(debt.value || 0),
+      totalValue: Number(debt.purchaseTotal || (debt.total ? debt.total * debt.value : debt.value) || 0),
+      date: isoDate(today),
+      dueDate: dueDateFromDay(debt.dueDay || 10),
+      status: debt.status === "quitada" ? "pago" : "pendente",
+      paymentMethodId: resolveId("paymentMethods", debt.paymentMethodId || debt.payment, ""),
+      accountId: "",
+      cardId: resolveId("cards", debt.cardId || debt.card, ""),
+      bankOrCard: displayName("cards", debt.cardId, ""),
+      notes: "Migrado da antiga aba Dívidas.",
+      isInstallment: Boolean(debt.total),
+      installments: Number(debt.total || 1),
+      currentInstallment: Number(debt.current || 1),
+      lastInstallmentDate: calculateLastInstallmentDate({ dueDate: dueDateFromDay(debt.dueDay || 10), installments: debt.total || 1, currentInstallment: debt.current || 1 }),
+      paidAt: debt.status === "quitada" ? isoDate(today) : "",
+    });
+  });
+}
+
+function migrateLegacyExpenseLists() {
+  migrateVariableExpenses();
+  migrateInstallments();
+}
+
+function migrateVariableExpenses() {
+  if (!Array.isArray(state.variableExpenses) || !state.variableExpenses.length) return;
+  const migrated = new Set(state.expenses.map((expense) => expense.migratedFromVariableExpenseId).filter(Boolean));
+  state.variableExpenses.forEach((item) => {
+    if (migrated.has(item.id)) return;
+    state.expenses.push({
+      id: uid(),
+      migratedFromVariableExpenseId: item.id,
+      description: item.description || item.name || "Gasto migrado",
+      categoryId: resolveId("categories", item.categoryId || item.category, "Outros"),
+      subcategoryId: resolveId("subcategories", item.subcategoryId || item.subcategory, ""),
+      value: Number(item.value || item.amount || 0),
+      installmentValue: Number(item.value || item.amount || 0),
+      totalValue: Number(item.value || item.amount || 0),
+      date: item.date || isoDate(today),
+      dueDate: item.dueDate || item.date || isoDate(today),
+      status: item.status || "pendente",
+      paymentType: item.paymentType || "",
+      bankOrCard: item.bankOrCard || "",
+      paymentMethodId: resolveId("paymentMethods", item.paymentMethodId || item.payment, ""),
+      accountId: resolveId("accounts", item.accountId || item.account, ""),
+      cardId: resolveId("cards", item.cardId || item.card, ""),
+      notes: item.notes || "Migrado da antiga lista de gastos variÃ¡veis.",
+      isInstallment: false,
+      installments: 1,
+      currentInstallment: 1,
+      lastInstallmentDate: item.dueDate || item.date || isoDate(today),
+    });
+  });
+}
+
+function migrateInstallments() {
+  if (!Array.isArray(state.installments) || !state.installments.length) return;
+  const migrated = new Set(state.expenses.map((expense) => expense.migratedFromInstallmentId).filter(Boolean));
+  state.installments.forEach((item) => {
+    if (migrated.has(item.id)) return;
+    const total = Number(item.installments || item.total || item.totalInstallments || 1);
+    const current = Number(item.currentInstallment || item.current || 1);
+    const value = Number(item.installmentValue || item.value || 0);
+    state.expenses.push({
+      id: uid(),
+      migratedFromInstallmentId: item.id,
+      description: item.description || item.name || "Compra parcelada migrada",
+      categoryId: resolveId("categories", item.categoryId || item.category, "Outros"),
+      subcategoryId: resolveId("subcategories", item.subcategoryId || item.subcategory, ""),
+      value,
+      installmentValue: value,
+      totalValue: Number(item.totalValue || item.purchaseTotal || value * total),
+      date: item.date || isoDate(today),
+      dueDate: item.dueDate || isoDate(today),
+      status: item.status === "quitada" ? "pago" : item.status || "pendente",
+      paymentType: item.paymentType || "CrÃ©dito",
+      bankOrCard: item.bankOrCard || displayName("cards", item.cardId, ""),
+      paymentMethodId: resolveId("paymentMethods", item.paymentMethodId || item.payment, ""),
+      accountId: resolveId("accounts", item.accountId || item.account, ""),
+      cardId: resolveId("cards", item.cardId || item.card, ""),
+      notes: item.notes || "Migrado da antiga lista de parcelas.",
+      isInstallment: true,
+      installments: total,
+      currentInstallment: current,
+      lastInstallmentDate: item.lastInstallmentDate || calculateLastInstallmentDate({ dueDate: item.dueDate || isoDate(today), installments: total, currentInstallment: current }),
+    });
+  });
+}
+
+function dueDateFromDay(day) {
+  const safeDay = Math.min(Math.max(Number(day || 1), 1), 28);
+  return isoDate(new Date(today.getFullYear(), today.getMonth(), safeDay));
+}
+
+function normalizeExpenseStatus(expense) {
+  if (expense.status === "quitada") return "pago";
+  if (["pago", "pendente", "atrasado"].includes(expense.status)) {
+    if (expense.status !== "pago" && isPastDue(expense.dueDate)) return "atrasado";
+    return expense.status;
+  }
+  return isPastDue(expense.dueDate) ? "atrasado" : "pendente";
+}
+
+function isPastDue(dateValue) {
+  if (!dateValue) return false;
+  const due = new Date(`${dateValue}T00:00:00`);
+  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return due < base;
+}
+
+function isDueToday(dateValue) {
+  return dateValue === isoDate(today);
+}
+
+function calculateLastInstallmentDate(expense) {
+  const dueDate = new Date(`${expense.dueDate || isoDate(today)}T00:00:00`);
+  const remaining = Math.max(Number(expense.installments || 1) - Number(expense.currentInstallment || 1), 0);
+  return isoDate(new Date(dueDate.getFullYear(), dueDate.getMonth() + remaining, dueDate.getDate()));
+}
+
+function refreshExpenseStatuses() {
+  state.expenses.forEach((expense) => {
+    if (expense.status !== "pago") expense.status = normalizeExpenseStatus(expense);
+  });
 }
 
 function syncConfigItemsToSettings() {
@@ -234,7 +386,7 @@ function active(list) {
 }
 
 function activeDebts() {
-  return state.debts.filter((debt) => debt.status === "ativa");
+  return state.expenses.filter((expense) => expense.isInstallment && !expense.settledAt);
 }
 
 function findItem(key, id) {
@@ -251,7 +403,6 @@ function ruCreditBalance() {
 
 function cardUsage(cardIdValue) {
   return (
-    sum(activeDebts().filter((debt) => debt.cardId === cardIdValue), (debt) => Number(debt.value)) +
     sum(state.expenses.filter((expense) => expense.cardId === cardIdValue), (expense) => Number(expense.value))
   );
 }
@@ -260,20 +411,33 @@ function cardAvailable(card) {
   return Number(card.limit || 0) - cardUsage(card.id);
 }
 
+function isCreditExpense(expense) {
+  const payment = displayName("paymentMethods", expense.paymentMethodId, "").toLowerCase();
+  const paymentType = String(expense.paymentType || "").toLowerCase();
+  return payment.includes("crédito") || paymentType.includes("crédito") || Boolean(expense.cardId);
+}
+
 function calc() {
   const income = sum(state.incomes.filter((item) => item.status !== "encerrada"), (item) => Number(item.value));
-  const fixed = sum(activeDebts(), (item) => Number(item.value));
   const variable = sum(state.expenses, (item) => Number(item.value));
+  const fixed = sum(state.expenses.filter((item) => item.kind === "fixo"), (item) => Number(item.value));
   const ruBalance = ruCreditBalance();
-  const balance = income - fixed - variable;
-  const committed = income ? ((fixed + variable) / income) * 100 : 0;
+  const balance = income - variable;
+  const committed = income ? (variable / income) * 100 : 0;
   const saved = Math.max(0, Math.min(balance, state.settings.savingsGoal));
   const emergencyGoal = state.goals.find((goal) => goal.name === "Reserva de emergência");
   const emergencyProgress = emergencyGoal ? (emergencyGoal.saved / emergencyGoal.target) * 100 : 0;
-  return { income, fixed, variable, ruBalance, balance, committed, saved, emergencyProgress };
+  const paid = sum(state.expenses.filter((item) => item.status === "pago"), (item) => Number(item.value));
+  const pending = sum(state.expenses.filter((item) => item.status === "pendente"), (item) => Number(item.value));
+  const overdue = sum(state.expenses.filter((item) => item.status === "atrasado"), (item) => Number(item.value));
+  const credit = sum(state.expenses.filter(isCreditExpense), (item) => Number(item.value));
+  const cashLike = sum(state.expenses.filter((item) => !isCreditExpense(item)), (item) => Number(item.value));
+  const futureInstallments = sum(state.expenses.filter((item) => item.isInstallment && !item.settledAt), (item) => Math.max(Number(item.installments || 1) - Number(item.currentInstallment || 1), 0) * Number(item.installmentValue || item.value || 0));
+  return { income, fixed, variable, paid, pending, overdue, credit, cashLike, futureInstallments, ruBalance, balance, committed, saved, emergencyProgress };
 }
 
 function render() {
+  refreshExpenseStatuses();
   saveState();
   renderMetrics();
   renderCharts();
@@ -281,7 +445,7 @@ function render() {
   renderTables();
   renderGoals();
   renderRegistry();
-  renderReport();
+  renderExpenseReport();
   renderBackupStatus();
 }
 
@@ -289,8 +453,13 @@ function renderMetrics() {
   const data = calc();
   const metrics = [
     ["Receita total", data.income, "Bolsa, renda temporária e extras"],
-    ["Despesas fixas", data.fixed, "Dívidas, parcelas e compromissos"],
-    ["Gastos variáveis", data.variable, "Categorias do mês atual"],
+    ["Total de gastos", data.variable, "Gastos simples, fixos e parcelados"],
+    ["Total pago", data.paid, "Gastos já pagos"],
+    ["Total pendente", data.pending, "Aguardando pagamento"],
+    ["Total atrasado", data.overdue, "Vencidos e não pagos"],
+    ["Cartão de crédito", data.credit, "Compras em crédito/cartões"],
+    ["Pix/Débito/Dinheiro", data.cashLike, "Pagamentos fora do crédito"],
+    ["Parcelas futuras", data.futureInstallments, "Compromisso dos próximos meses"],
     ["Saldo do mês", data.balance, `${data.committed.toFixed(1)}% da renda comprometida`],
     ["Renda comprometida", data.committed, "Limite saudável sugerido: até 80%", "%"],
     ["Valor poupado", data.saved, `Meta mensal: ${currency.format(state.settings.savingsGoal)}`],
@@ -335,10 +504,10 @@ function renderCharts() {
   document.querySelector("#topCategoryBadge").textContent = top ? `Maior: ${top.label}` : "Sem gastos";
 
   const data = calc();
-  const max = Math.max(data.income, data.fixed + data.variable, 1);
+  const max = Math.max(data.income, data.variable, 1);
   document.querySelector("#barChart").innerHTML = [
     ["Receitas", data.income, "income"],
-    ["Despesas", data.fixed + data.variable, "expense"],
+    ["Gastos", data.variable, "expense"],
   ]
     .map(([label, value, type]) => `<div class="bar-row"><span>${label}</span><div class="bar-track"><div class="bar-fill ${type}" style="width:${(value / max) * 100}%"></div></div><strong>${currency.format(value)}</strong></div>`)
     .join("");
@@ -364,17 +533,17 @@ function renderBarChart(selector, rows, type = "income") {
 
 function cardDashboardRows() {
   const cardRows = state.cards.map((card) => ({ label: card.name, value: cardUsage(card.id) }));
-  const installmentRows = [{ label: "Parceladas", value: sum(activeDebts().filter((debt) => debt.total), (debt) => Number(debt.value)) }];
+  const installmentRows = [{ label: "Parceladas", value: sum(state.expenses.filter((expense) => expense.isInstallment), (expense) => Number(expense.value)) }];
   return [...cardRows, ...installmentRows].filter((row) => row.value > 0).sort((a, b) => b.value - a.value);
 }
 
 function renderInstallmentChart() {
-  const rows = activeDebts()
-    .filter((debt) => debt.total)
-    .map((debt) => ({
-      label: `${debt.name} ${debt.current}/${debt.total}`,
-      value: Number(debt.value),
-      detail: `${Math.max(debt.total - debt.current + 1, 0)} restantes - ${displayName("cards", debt.cardId, "sem cartão")} - quita ${payoffDate(debt).toLocaleDateString("pt-BR")}`,
+  const rows = state.expenses
+    .filter((expense) => expense.isInstallment && !expense.settledAt)
+    .map((expense) => ({
+      label: `${expense.description} ${expense.currentInstallment}/${expense.installments}`,
+      value: Number(expense.value),
+      detail: `${Math.max(expense.installments - expense.currentInstallment, 0)} futuras - ${displayName("cards", expense.cardId, "sem cartão")} - última ${formatDate(expense.lastInstallmentDate)}`,
     }))
     .sort((a, b) => b.value - a.value);
   const max = Math.max(...rows.map((row) => row.value), 1);
@@ -408,7 +577,7 @@ function renderLineChart() {
 function projectBalances() {
   const base = calc();
   return Array.from({ length: 6 }, (_, index) => {
-    const parcelRelief = sum(state.debts.filter((debt) => debt.total && debt.current + index > debt.total), (debt) => Number(debt.value));
+    const parcelRelief = sum(state.expenses.filter((expense) => expense.isInstallment && expense.currentInstallment + index > expense.installments), (expense) => Number(expense.value));
     const tempIncomeDrop = state.incomes.some((income) => income.status !== "encerrada" && income.type === "Temporária" && income.installments && income.current + index > income.installments) ? Number(state.settings.temporaryIncome) : 0;
     const date = new Date(today.getFullYear(), today.getMonth() + index, 1);
     return { month: date.toLocaleDateString("pt-BR", { month: "short" }), balance: base.balance + parcelRelief - tempIncomeDrop };
@@ -417,7 +586,7 @@ function projectBalances() {
 
 function renderAlerts() {
   const data = calc();
-  const upcoming = activeDebts().filter((debt) => debt.dueDay >= today.getDate() && debt.dueDay - today.getDate() <= 5);
+  const upcoming = state.expenses.filter((expense) => expense.status !== "pago" && daysUntil(expense.dueDate) >= 0 && daysUntil(expense.dueDate) <= 5);
   const alerts = [];
   if (data.balance < 0) alerts.push(`<div class="alert danger">Saldo negativo de ${currency.format(Math.abs(data.balance))}. Revise a maior categoria variável antes de assumir novos gastos.</div>`);
   if (data.committed > 80) alerts.push(`<div class="alert">A renda comprometida está em ${data.committed.toFixed(1)}%. Priorize quitação de parcelas curtas para liberar caixa.</div>`);
@@ -425,15 +594,21 @@ function renderAlerts() {
   const creditUsage = sum(cardDashboardRows().filter((row) => row.label !== "Parceladas"), (row) => row.value);
   if (state.settings.creditCardLimit && creditUsage > state.settings.creditCardLimit) alerts.push(`<div class="alert">Uso de cartão acima do limite mensal definido: ${currency.format(creditUsage)} de ${currency.format(state.settings.creditCardLimit)}.</div>`);
   if (data.ruBalance < state.settings.ruValue * 3) alerts.push(`<div class="alert">Saldo do RU baixo: ${currency.format(data.ruBalance)}. Planeje uma recarga para evitar gasto maior com alimentação fora do campus.</div>`);
-  if (upcoming.length) alerts.push(`<div class="alert">Vencimentos próximos: ${upcoming.map((debt) => `${esc(debt.name)} dia ${debt.dueDay}`).join(", ")}.</div>`);
+  if (upcoming.length) alerts.push(`<div class="alert">Próximos vencimentos: ${upcoming.map((expense) => `${esc(expense.description)} em ${formatDate(expense.dueDate)}`).join(", ")}.</div>`);
   document.querySelector("#alertStrip").innerHTML = alerts.join("");
+}
+
+function daysUntil(dateValue) {
+  const due = new Date(`${dateValue}T00:00:00`);
+  const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.ceil((due - base) / 86400000);
 }
 
 function renderTables() {
   renderSettings();
   document.querySelector("#incomeTable").innerHTML = state.incomes.map(incomeRow).join("");
-  document.querySelector("#debtTable").innerHTML = state.debts.map(debtRow).join("");
-  document.querySelector("#expenseTable").innerHTML = state.expenses.map(expenseRow).join("");
+  renderExpenseFilters();
+  document.querySelector("#expenseTable").innerHTML = filteredExpenses().map(expenseRow).join("");
   document.querySelector("#ruTable").innerHTML = state.ruTransactions.map(ruRow).join("");
   renderRuSummary();
   renderTimeline();
@@ -475,13 +650,49 @@ function debtRow(item) {
   return `<tr><td>${esc(item.name)}</td><td>${currency.format(item.value)}</td><td>${item.purchaseTotal ? currency.format(item.purchaseTotal) : "Recorrente"}</td><td><span class="name-cell">${logo(payment, "P")}${esc(payment?.name || "Não informado")}</span></td><td><span class="name-cell">${logo(card, "CC")}${esc(card?.name || "Não se aplica")}</span></td><td>${installment}<br><small>${remaining} restante(s)</small></td><td>${payoff}</td><td><button class="status ${statusClass}" data-pay="${item.id}" type="button">${esc(item.status)}</button></td><td>${actions("debts", item.id)}</td></tr>`;
 }
 
+function renderExpenseFilters() {
+  const filters = ["Todos", "Pendentes", "Pagos", "Atrasados", "Parcelados", "Cartão de crédito", "Pix/Débito/Dinheiro"];
+  document.querySelector("#expenseFilters").innerHTML = filters
+    .map((filter) => `<button class="filter-button ${expenseFilter === filter ? "active" : ""}" data-expense-filter="${filter}" type="button">${filter}</button>`)
+    .join("");
+}
+
+function filteredExpenses() {
+  return state.expenses
+    .filter((expense) => {
+      if (expenseFilter === "Pendentes") return expense.status === "pendente";
+      if (expenseFilter === "Pagos") return expense.status === "pago";
+      if (expenseFilter === "Atrasados") return expense.status === "atrasado";
+      if (expenseFilter === "Parcelados") return expense.isInstallment;
+      if (expenseFilter === "Cartão de crédito") return isCreditExpense(expense);
+      if (expenseFilter === "Pix/Débito/Dinheiro") return !isCreditExpense(expense);
+      return true;
+    })
+    .sort((a, b) => new Date(`${a.dueDate}T00:00:00`) - new Date(`${b.dueDate}T00:00:00`));
+}
+
 function expenseRow(item) {
   const category = findItem("categories", item.categoryId);
-  const subcategory = findItem("subcategories", item.subcategoryId);
   const payment = findItem("paymentMethods", item.paymentMethodId);
-  const account = findItem("accounts", item.accountId);
   const card = findItem("cards", item.cardId);
-  return `<tr><td>${formatDate(item.date)}</td><td><span class="name-cell">${logo(category, "C")}${esc(category?.name || "Categoria")}</span></td><td>${esc(subcategory?.name || "-")}</td><td>${esc(item.description)}</td><td><span class="name-cell">${logo(payment, "P")}${esc(payment?.name || "Pagamento")}</span></td><td>${esc(account?.name || "-")}</td><td>${esc(card?.name || "-")}</td><td>${item.installments || 1}x</td><td>${currency.format(item.value)}</td><td>${actions("expenses", item.id)}</td></tr>`;
+  const rowClass = item.status === "pago" ? "paid" : item.status === "atrasado" ? "overdue" : isDueToday(item.dueDate) ? "due-today" : "";
+  const installment = item.isInstallment ? `${item.currentInstallment}/${item.installments}` : "-";
+  return `<tr class="${rowClass}"><td>${formatDate(item.dueDate)}</td><td><span class="status ${statusClass(item)}">${esc(item.status)}</span></td><td>${esc(item.description)}${item.notes ? `<br><small>${esc(item.notes)}</small>` : ""}</td><td><span class="name-cell">${logo(category, "C")}${esc(category?.name || "Categoria")}</span></td><td>${currency.format(item.value)}</td><td><span class="name-cell">${logo(payment, "P")}${esc(payment?.name || item.paymentType || "Pagamento")}</span></td><td>${esc(card?.name || item.bankOrCard || "-")}</td><td>${installment}</td><td>${expenseActions(item)}</td></tr>`;
+}
+
+function statusClass(item) {
+  if (item.status === "pago") return "done";
+  if (item.status === "atrasado") return "late";
+  if (isDueToday(item.dueDate)) return "due";
+  return "";
+}
+
+function expenseActions(item) {
+  const parcelActions = item.isInstallment
+    ? `<button class="secondary-button" data-advance-expense="${item.id}" type="button">Avançar parcela</button><button class="secondary-button" data-settle-expense="${item.id}" type="button">Quitar gasto</button>`
+    : "";
+  const paidLabel = item.isInstallment ? "Marcar parcela paga" : "Marcar como pago";
+  return `<div class="row-actions">${actions("expenses", item.id)}<button class="secondary-button" data-mark-paid="${item.id}" type="button">${paidLabel}</button><button class="secondary-button" data-mark-pending="${item.id}" type="button">Marcar pendente</button>${parcelActions}</div>`;
 }
 
 function ruRow(item) {
@@ -503,18 +714,23 @@ function formatDate(value) {
 }
 
 function renderTimeline() {
-  const items = state.debts
-    .filter((debt) => debt.status === "ativa")
-    .map((debt) => ({ ...debt, remaining: debt.total ? Math.max(debt.total - debt.current + 1, 0) : 1, date: debt.total ? payoffDate(debt) : new Date(today.getFullYear(), today.getMonth(), debt.dueDay) }))
-    .sort((a, b) => a.date - b.date);
-  document.querySelector("#timeline").innerHTML = items
-    .map((item) => `<div class="timeline-item"><div><strong>${esc(item.name)}</strong><br><small>${item.total ? `${item.remaining} parcela(s) restante(s)` : "Compromisso recorrente"}</small></div><span>${formatDate(isoDate(item.date))}</span></div>`)
-    .join("");
-}
-
-function payoffDate(debt) {
-  const remaining = debt.total ? Math.max(debt.total - debt.current + 1, 0) : 0;
-  return new Date(today.getFullYear(), today.getMonth() + Math.max(remaining - 1, 0), debt.dueDay);
+  const items = state.expenses
+    .map((expense) => ({
+      ...expense,
+      timelineDate: new Date(`${expense.dueDate || expense.date || isoDate(today)}T00:00:00`),
+      remaining: expense.isInstallment ? Math.max(Number(expense.installments || 1) - Number(expense.currentInstallment || 1), 0) : 0,
+    }))
+    .sort((a, b) => a.timelineDate - b.timelineDate)
+    .slice(0, 18);
+  document.querySelector("#timeline").innerHTML = items.length
+    ? items
+        .map((item) => {
+          const parcel = item.isInstallment ? `Parcela ${item.currentInstallment}/${item.installments} - ${item.remaining} futura(s)` : "Gasto avulso ou recorrente";
+          const status = item.status === "pago" ? "quitado" : item.status;
+          return `<div class="timeline-item ${item.status}"><div><strong>${esc(item.description)}</strong><br><small>${esc(parcel)} - ${esc(status)}</small></div><span>${formatDate(item.dueDate || item.date)}</span></div>`;
+        })
+        .join("")
+    : `<p>Nenhum vencimento registrado.</p>`;
 }
 
 function renderGoals() {
@@ -562,6 +778,32 @@ function renderReport() {
   `;
 }
 
+function renderExpenseReport() {
+  const data = calc();
+  const byCategory = categoryRows().sort((a, b) => b.value - a.value);
+  const top = byCategory[0] || { label: "Sem categoria", value: 0 };
+  const topPayment = groupExpenses((expense) => displayName("paymentMethods", expense.paymentMethodId))[0] || { label: "Sem forma de pagamento", value: 0 };
+  const topCard = cardDashboardRows()[0] || { label: "Sem cartão", value: 0 };
+  const economy = top.value * 0.15;
+  const futureCount = sum(state.expenses.filter((expense) => expense.isInstallment && !expense.settledAt), (expense) => Math.max(Number(expense.installments || 1) - Number(expense.currentInstallment || 1), 0));
+  const creditMessage = data.credit > data.cashLike
+    ? "A maior concentração de gastos está no cartão de crédito."
+    : "Pix, débito e dinheiro concentram mais gastos que o cartão no momento.";
+  document.querySelector("#reportDate").textContent = new Date().toLocaleDateString("pt-BR", { dateStyle: "long" });
+  document.querySelector("#smartReport").innerHTML = `
+    <article class="report-card"><strong>Maior categoria</strong><p>${esc(top.label)} concentra ${currency.format(top.value)} neste mês.</p></article>
+    <article class="report-card"><strong>Pendências do mês</strong><p>Você tem ${currency.format(data.pending)} em gastos pendentes e ${currency.format(data.overdue)} em atrasados.</p></article>
+    <article class="report-card"><strong>Forma de pagamento</strong><p>${esc(topPayment.label)} concentra ${currency.format(topPayment.value)} dos gastos.</p></article>
+    <article class="report-card"><strong>Cartões</strong><p>${esc(topCard.label)} é o maior ponto de atenção em cartões/parcelados, com ${currency.format(topCard.value)}.</p></article>
+    <article class="report-card"><strong>Economia potencial</strong><p>Reduzindo 15% em ${esc(top.label)}, você economiza ${currency.format(economy)} por mês e ${currency.format(economy * 12)} por ano.</p></article>
+    <article class="report-card"><strong>Saldo mensal</strong><p>${data.balance < 0 ? "Atenção: saldo negativo" : "Saldo positivo"} de ${currency.format(data.balance)} após compromissos.</p></article>
+    <article class="report-card"><strong>Parcelas futuras</strong><p>Existem ${futureCount} parcela(s) futura(s), somando ${currency.format(data.futureInstallments)} em compromissos.</p></article>
+    <article class="report-card"><strong>Concentração</strong><p>${esc(creditMessage)}</p></article>
+    <article class="report-card"><strong>RU e alimentação</strong><p>Saldo atual do RU: ${currency.format(data.ruBalance)}. O consumo mensal planejado é ${currency.format(state.settings.ruValue * state.settings.ruDays)}.</p></article>
+    <article class="report-card"><strong>Recomendação</strong><p>Você pode economizar mais em ${esc(top.label)} revisando compras não essenciais e priorizando gastos pagos à vista.</p></article>
+  `;
+}
+
 function renderBackupStatus() {
   const target = document.querySelector("#localStorageStatus");
   if (!target) return;
@@ -590,7 +832,7 @@ const modalConfigs = {
   configItems: { title: "Item de configuração", required: ["label", "key"], fields: [["label", "Nome do item", "text"], ["key", "Chave interna", "text"], ["value", "Valor", "number"], ["type", "Tipo", "select", ["currency", "number"]]] },
   incomes: { title: "Receita", required: ["name"], fields: [["name", "Nome", "text"], ["value", "Valor", "number"], ["type", "Tipo", "select", ["Fixa", "Temporária", "Eventual"]], ["receivedAt", "Data de recebimento", "date"], ["installments", "Quantidade de parcelas", "number"], ["current", "Parcela atual", "number"], ["status", "Status", "select", ["ativa", "encerrada"]]] },
   debts: { title: "Dívida ou compra parcelada", required: ["name"], fields: [["name", "Despesa", "text"], ["value", "Valor", "number"], ["purchaseTotal", "Valor total", "number"], ["paymentMethodId", "Forma de pagamento", "select", () => optionList("paymentMethods", true)], ["cardId", "Cartão", "select", () => optionList("cards", true)], ["total", "Número total de parcelas", "number"], ["current", "Parcela atual", "number"], ["dueDay", "Data de vencimento", "number"], ["status", "Status", "select", ["ativa", "quitada"]]] },
-  expenses: { title: "Gasto variável", fields: [["date", "Data", "date"], ["categoryId", "Categoria", "select", () => optionList("categories")], ["subcategoryId", "Subcategoria", "select", () => optionList("subcategories", true)], ["description", "Descrição", "text"], ["value", "Valor", "number"], ["paymentMethodId", "Pagamento", "select", () => optionList("paymentMethods")], ["accountId", "Conta", "select", () => optionList("accounts", true)], ["cardId", "Cartão", "select", () => optionList("cards", true)], ["installments", "Parcelas", "number"], ["currentInstallment", "Parcela atual", "number"]] },
+  expenses: { title: "Gasto", required: ["description", "categoryId", "value", "dueDate"], fields: [["description", "Descrição do gasto", "text"], ["categoryId", "Categoria", "select", () => optionList("categories")], ["subcategoryId", "Subcategoria", "select", () => optionList("subcategories", true)], ["value", "Valor", "number"], ["date", "Data do gasto", "date"], ["dueDate", "Data de vencimento", "date"], ["status", "Status", "select", ["pendente", "pago", "atrasado"]], ["paymentType", "Forma de pagamento", "select", ["Dinheiro", "Pix", "Débito", "Crédito", "Cartão estudantil RU", "Outro"]], ["bankOrCard", "Banco ou cartão utilizado", "select", ["Nubank", "Mercado Pago", "Banco do Brasil", "Banco Inter", "Dinheiro", "RU", "Outro"]], ["paymentMethodId", "Forma cadastrada", "select", () => optionList("paymentMethods", true)], ["accountId", "Conta", "select", () => optionList("accounts", true)], ["cardId", "Cartão", "select", () => optionList("cards", true)], ["notes", "Observações", "text"], ["isInstallment", "Este gasto é parcelado?", "select", [{ label: "Não", value: "" }, { label: "Sim", value: "true" }]], ["totalValue", "Valor total da dívida/compra", "number"], ["installments", "Número total de parcelas", "number"], ["currentInstallment", "Parcela atual", "number"], ["installmentValue", "Valor da parcela", "number"], ["lastInstallmentDate", "Data prevista da última parcela", "date"]] },
   ruTransactions: { title: "Movimento do RU", fields: [["date", "Data", "date"], ["type", "Tipo", "select", ["Recarga", "Consumo"]], ["description", "Descrição", "text"], ["value", "Valor", "number"]] },
   goals: { title: "Meta financeira", fields: [["name", "Meta", "text"], ["target", "Valor alvo", "number"], ["saved", "Valor guardado", "number"]] },
   categories: { title: "Categoria", fields: [["name", "Nome", "text"], ["icon", "Ícone ou sigla", "text"], ["color", "Cor", "color"]] },
@@ -612,6 +854,7 @@ function openModal(entity, id = null, settingKey = null) {
   const item = settingKey ? { value: state.settings[settingKey] } : id ? clone(findItem(entity, id)) : defaultsFor(entity);
   document.querySelector("#modalTitle").textContent = `${id || settingKey ? "Editar" : "Adicionar"} ${title}`;
   document.querySelector("#modalForm").innerHTML = settingKey ? settingForm(settingKey, item.value) : fieldsHtml(entity, item);
+  updateExpenseInstallmentFields();
   document.querySelector("#modalBackdrop").hidden = false;
 }
 
@@ -621,7 +864,7 @@ function defaultsFor(entity) {
     configItems: { label: "", key: "", value: 0, type: "currency" },
     incomes: { name: "", value: 0, type: "Fixa", receivedAt: isoDate(today), installments: 0, current: 1, status: "ativa" },
     debts: { name: "", value: 0, purchaseTotal: 0, paymentMethodId: "", cardId: "", total: 0, current: 1, dueDay: 10, status: "ativa" },
-    expenses: { date: isoDate(today), categoryId: state.categories[0]?.id || "", subcategoryId: "", description: "", value: 0, paymentMethodId: state.paymentMethods[0]?.id || "", accountId: "", cardId: "", installments: 1, currentInstallment: 1 },
+    expenses: { description: "", categoryId: state.categories[0]?.id || "", subcategoryId: "", value: 0, date: isoDate(today), dueDate: isoDate(today), status: "pendente", paymentType: "Pix", bankOrCard: "Outro", paymentMethodId: "", accountId: "", cardId: "", notes: "", isInstallment: "", totalValue: 0, installments: 1, currentInstallment: 1, installmentValue: 0, lastInstallmentDate: isoDate(today) },
     ruTransactions: { date: isoDate(today), type: "Recarga", description: "", value: 0 },
     goals: { name: "", target: 0, saved: 0 },
     categories: { name: "", icon: "", color: "#147a4b" },
@@ -698,6 +941,7 @@ async function submitModal(event) {
     const value = fd.get(name);
     item[name] = type === "number" ? Number(value || 0) : value;
   }
+  if (entity === "expenses") normalizeExpenseBeforeSave(item);
   if (entity === "expenses") maybeCreateRuConsumption(item);
   if (entity === "configItems") syncConfigItemToSettings(item);
   if (modalContext.id) {
@@ -730,6 +974,16 @@ function showModalMessage(message, type = "info") {
   target.className = `modal-message ${type}`;
 }
 
+function updateExpenseInstallmentFields() {
+  if (modalContext?.entity !== "expenses") return;
+  const form = document.querySelector("#modalForm");
+  const visible = form.elements.isInstallment?.value === "true";
+  ["totalValue", "installments", "currentInstallment", "installmentValue", "lastInstallmentDate"].forEach((name) => {
+    const field = form.elements[name]?.closest(".field");
+    if (field) field.hidden = !visible;
+  });
+}
+
 function notify(message) {
   const target = document.querySelector("#appToast");
   if (!target) return alert(message);
@@ -746,10 +1000,84 @@ function syncConfigItemToSettings(item) {
   state.settings[item.key] = Number(item.value || 0);
 }
 
+function payExpense(id) {
+  const expense = state.expenses.find((item) => item.id === id);
+  if (!expense) return;
+  expense.status = "pago";
+  expense.paidAt = isoDate(today);
+  if (expense.isInstallment && Number(expense.currentInstallment || 1) < Number(expense.installments || 1)) {
+    if (confirm("Deseja avançar para a próxima parcela?")) advanceExpenseInstallment(id, false);
+  } else if (expense.isInstallment) {
+    expense.status = "pago";
+    expense.settledAt = isoDate(today);
+  }
+  render();
+  notify("Gasto marcado como pago.");
+}
+
+function updateExpenseStatus(id, status) {
+  const expense = state.expenses.find((item) => item.id === id);
+  if (!expense) return;
+  expense.status = normalizeExpenseStatus({ ...expense, status });
+  if (status !== "pago") expense.paidAt = "";
+  render();
+  notify("Status atualizado.");
+}
+
+function advanceExpenseInstallment(id, shouldRender = true) {
+  const expense = state.expenses.find((item) => item.id === id);
+  if (!expense || !expense.isInstallment) return;
+  if (Number(expense.currentInstallment || 1) >= Number(expense.installments || 1)) {
+    expense.status = "pago";
+    expense.settledAt = isoDate(today);
+  } else {
+    expense.currentInstallment = Number(expense.currentInstallment || 1) + 1;
+    expense.status = "pendente";
+    expense.paidAt = "";
+    const due = new Date(`${expense.dueDate}T00:00:00`);
+    expense.dueDate = isoDate(new Date(due.getFullYear(), due.getMonth() + 1, due.getDate()));
+    expense.lastInstallmentDate = calculateLastInstallmentDate(expense);
+  }
+  if (shouldRender) {
+    render();
+    notify("Parcela avançada.");
+  }
+}
+
+function settleExpense(id) {
+  const expense = state.expenses.find((item) => item.id === id);
+  if (!expense) return;
+  expense.status = "pago";
+  expense.currentInstallment = Number(expense.installments || expense.currentInstallment || 1);
+  expense.paidAt = isoDate(today);
+  expense.settledAt = isoDate(today);
+  render();
+  notify("Gasto parcelado quitado.");
+}
+
 function maybeCreateRuConsumption(expense) {
   const payment = findItem("paymentMethods", expense.paymentMethodId);
   if (payment?.name !== "Cartão Estudantil (RU)" || modalContext.id) return;
   state.ruTransactions.push({ id: uid(), date: expense.date, type: "Consumo", description: expense.description || "Consumo RU", value: Number(expense.value) });
+}
+
+function normalizeExpenseBeforeSave(expense) {
+  expense.isInstallment = expense.isInstallment === true || expense.isInstallment === "true";
+  if (!expense.isInstallment) {
+    expense.installments = 1;
+    expense.currentInstallment = 1;
+    expense.totalValue = Number(expense.value || 0);
+    expense.installmentValue = Number(expense.value || 0);
+    expense.lastInstallmentDate = expense.dueDate;
+  } else {
+    expense.installments = Math.max(Number(expense.installments || 1), 1);
+    expense.currentInstallment = Math.min(Math.max(Number(expense.currentInstallment || 1), 1), expense.installments);
+    expense.installmentValue = Number(expense.installmentValue || expense.value || 0);
+    expense.value = expense.installmentValue;
+    expense.totalValue = Number(expense.totalValue || expense.installmentValue * expense.installments);
+    expense.lastInstallmentDate = expense.lastInstallmentDate || calculateLastInstallmentDate(expense);
+  }
+  expense.status = normalizeExpenseStatus(expense);
 }
 
 function syncSettingsToIncome(key) {
@@ -774,6 +1102,11 @@ document.addEventListener("click", (event) => {
   }
   const add = event.target.closest("[data-add]");
   if (add) openModal(add.dataset.add);
+  const filter = event.target.closest("[data-expense-filter]");
+  if (filter) {
+    expenseFilter = filter.dataset.expenseFilter;
+    renderTables();
+  }
   const edit = event.target.closest("[data-edit]");
   if (edit) openModal(edit.dataset.edit, edit.dataset.id);
   const editSetting = event.target.closest("[data-edit-setting]");
@@ -788,12 +1121,25 @@ document.addEventListener("click", (event) => {
   const pay = event.target.closest("[data-pay]");
   if (pay) {
     const debt = state.debts.find((item) => item.id === pay.dataset.pay);
+    if (!debt) return;
     if (debt.total && debt.current < debt.total) debt.current += 1;
     else debt.status = debt.status === "ativa" ? "quitada" : "ativa";
     if (debt.total && debt.current > debt.total) debt.status = "quitada";
     render();
   }
+  const markPaid = event.target.closest("[data-mark-paid]");
+  if (markPaid) payExpense(markPaid.dataset.markPaid);
+  const markPending = event.target.closest("[data-mark-pending]");
+  if (markPending) updateExpenseStatus(markPending.dataset.markPending, "pendente");
+  const advance = event.target.closest("[data-advance-expense]");
+  if (advance) advanceExpenseInstallment(advance.dataset.advanceExpense);
+  const settle = event.target.closest("[data-settle-expense]");
+  if (settle && confirm("Tem certeza que deseja quitar esta dívida parcelada? Essa ação não poderá ser desfeita.")) settleExpense(settle.dataset.settleExpense);
   if (event.target.id === "closeModal" || event.target.id === "cancelModal" || event.target.id === "modalBackdrop") closeModal();
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target.name === "isInstallment") updateExpenseInstallmentFields();
 });
 
 document.querySelector("#modalForm").addEventListener("submit", submitModal);
@@ -804,12 +1150,12 @@ document.querySelector("#resetData").addEventListener("click", () => {
   render();
 });
 document.querySelectorAll("#printReport, #exportPdf2").forEach((button) => button.addEventListener("click", () => window.print()));
-document.querySelectorAll("#exportExcel, #exportExcel2").forEach((button) => button.addEventListener("click", exportExcel));
-document.querySelector("#exportCsv").addEventListener("click", exportCsv);
+document.querySelectorAll("#exportExcel, #exportExcel2").forEach((button) => button.addEventListener("click", exportUnifiedExcel));
+document.querySelector("#exportCsv").addEventListener("click", exportUnifiedCsv);
 document.querySelector("#exportJson").addEventListener("click", exportJsonBackup);
 document.querySelector("#importJsonButton").addEventListener("click", () => document.querySelector("#importJsonInput").click());
 document.querySelector("#importJsonInput").addEventListener("change", importJsonBackup);
-document.querySelector("#backupExcel").addEventListener("click", exportExcel);
+document.querySelector("#backupExcel").addEventListener("click", exportUnifiedExcel);
 document.querySelector("#backupPdf").addEventListener("click", () => window.print());
 document.querySelector("#installPwa").addEventListener("click", installPwa);
 document.querySelector("#driveLogin").addEventListener("click", () => window.GoogleDriveSync?.signIn());
@@ -824,6 +1170,7 @@ window.addEventListener("beforeinstallprompt", (event) => {
 });
 
 function exportCsv() {
+  return exportUnifiedCsv();
   const rows = [["Tipo", "Nome/Data", "Categoria", "Subcategoria", "Descrição", "Pagamento", "Conta", "Cartão", "Parcelas", "Valor"]];
   state.incomes.forEach((item) => rows.push(["Receita", item.name, item.type, "", "", "", "", "", item.installments || "recorrente", item.value]));
   state.debts.forEach((item) => rows.push(["Dívida", item.name, item.status, "", `${item.current}/${item.total || "recorrente"}`, "", "", displayName("cards", item.cardId, ""), item.total || "recorrente", item.value]));
@@ -833,7 +1180,34 @@ function exportCsv() {
 }
 
 function exportExcel() {
+  return exportUnifiedExcel();
   const html = `<html><head><meta charset="UTF-8"></head><body>${document.querySelector("#reportContent").outerHTML}<h2>Receitas</h2>${tableHtml("#incomeTable")}<h2>Dívidas</h2>${tableHtml("#debtTable")}<h2>Gastos</h2>${tableHtml("#expenseTable")}<h2>RU</h2>${tableHtml("#ruTable")}</body></html>`;
+  download("financeiro-academico.xls", html, "application/vnd.ms-excel");
+}
+
+function exportUnifiedCsv() {
+  const rows = [["Tipo", "Nome/Data", "Categoria", "Subcategoria", "DescriÃ§Ã£o", "Vencimento", "Status", "Pagamento", "Conta", "CartÃ£o", "Parcelas", "Valor"]];
+  state.incomes.forEach((item) => rows.push(["Receita", item.name, item.type, "", "", item.receivedAt || "", item.status || "", "", "", "", item.installments || "recorrente", item.value]));
+  state.expenses.forEach((item) => rows.push([
+    "Gasto",
+    item.date,
+    displayName("categories", item.categoryId),
+    displayName("subcategories", item.subcategoryId, ""),
+    item.description,
+    item.dueDate,
+    item.status,
+    displayName("paymentMethods", item.paymentMethodId, item.paymentType || ""),
+    displayName("accounts", item.accountId, ""),
+    displayName("cards", item.cardId, item.bankOrCard || ""),
+    item.isInstallment ? `${item.currentInstallment}/${item.installments}` : 1,
+    item.value,
+  ]));
+  state.ruTransactions.forEach((item) => rows.push(["RU", item.date, item.type, "", item.description, item.date, item.type, "CartÃ£o Estudantil (RU)", "Carteira RU", "", "", item.value]));
+  download("financeiro-academico.csv", rows.map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(";")).join("\n"), "text/csv;charset=utf-8");
+}
+
+function exportUnifiedExcel() {
+  const html = `<html><head><meta charset="UTF-8"></head><body>${document.querySelector("#reportContent").outerHTML}<h2>Receitas</h2>${tableHtml("#incomeTable")}<h2>Gastos</h2>${tableHtml("#expenseTable")}<h2>RU</h2>${tableHtml("#ruTable")}</body></html>`;
   download("financeiro-academico.xls", html, "application/vnd.ms-excel");
 }
 

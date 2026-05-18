@@ -602,6 +602,46 @@ th {
   color: var(--muted);
 }
 
+.status.late {
+  background: #fff1ef;
+  color: var(--danger);
+}
+
+tr.paid {
+  background: #f2fbf5;
+}
+
+tr.due-today {
+  background: #fff8e7;
+}
+
+tr.overdue {
+  background: #fff1ef;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.filter-button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfefc;
+  color: var(--green-800);
+  font-weight: 750;
+}
+
+.filter-button.active {
+  background: var(--green-700);
+  border-color: var(--green-700);
+  color: var(--white);
+}
+
 .timeline {
   display: grid;
   gap: 10px;
@@ -639,6 +679,21 @@ th {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfefc;
+}
+
+.timeline-item.pago {
+  border-color: #cfeedd;
+  background: #f2fbf5;
+}
+
+.timeline-item.pendente {
+  border-color: #f1dfaa;
+  background: #fffaf0;
+}
+
+.timeline-item.atrasado {
+  border-color: #f1c0b8;
+  background: #fff1ef;
 }
 
 .goal-grid,
