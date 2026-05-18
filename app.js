@@ -577,7 +577,12 @@ function renderDriveStatus() {
   if (top) top.textContent = driveStatus.status;
   if (details) {
     const last = driveStatus.lastSyncAt ? new Date(driveStatus.lastSyncAt).toLocaleString("pt-BR") : "Nunca";
-    details.textContent = `${driveStatus.status}. Última sincronização: ${last}. ${driveStatus.connected ? "Conta Google conectada." : "Modo local disponível sem login."}`;
+    const hint = driveStatus.status === "Faça login para sincronizar"
+      ? "Entre com Google para acessar o arquivo financeiro-academico-data.json."
+      : driveStatus.connected
+        ? "Conta Google conectada."
+        : "Modo local disponível sem login.";
+    details.textContent = `${driveStatus.status}. Última sincronização: ${last}. ${hint}`;
   }
 }
 

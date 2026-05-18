@@ -15,6 +15,7 @@
   let isApplyingRemote = false;
   let lastSyncAt = localStorage.getItem("financeiro-academico-drive-last-sync") || "";
   let initAttempts = 0;
+  let pendingTokenResolve = null;
 
   function isConfigured() {
     return Boolean(config.clientId && !config.clientId.startsWith("SEU_"));
@@ -47,10 +48,19 @@
       scope: config.scope,
       callback: async (response) => {
         if (response.error) {
-          setStatus("Erro");
+          if (pendingTokenResolve) {
+            pendingTokenResolve(false);
+            pendingTokenResolve = null;
+          }
+          setStatus(response.error === "interaction_required" ? "Faça login para sincronizar" : "Erro ao sincronizar");
           return;
         }
         accessToken = response.access_token;
+        if (pendingTokenResolve) {
+          pendingTokenResolve(true);
+          pendingTokenResolve = null;
+          return;
+        }
         await afterLogin();
       },
     });
@@ -69,6 +79,27 @@
       return;
     }
     tokenClient.requestAccessToken({ prompt: accessToken ? "" : "consent" });
+  }
+
+  function requestTokenSilently() {
+    if (!tokenClient) {
+      setStatus("Faça login para sincronizar");
+      return Promise.resolve(false);
+    }
+    return new Promise((resolve) => {
+      pendingTokenResolve = resolve;
+      tokenClient.requestAccessToken({ prompt: "" });
+    });
+  }
+
+  async function ensureToken() {
+    if (accessToken) return true;
+    setStatus("Sincronizando...");
+    const renewed = await requestTokenSilently();
+    if (renewed) return true;
+    setStatus("Faça login para sincronizar");
+    alert("Sua sessão do Google expirou. Faça login novamente para sincronizar.");
+    return false;
   }
 
   function signOut() {
@@ -104,7 +135,26 @@
       setStatus("Offline");
       return;
     }
-    setStatus("Sincronizando");
+    await compareAndSync({ askBeforeUpload: true });
+  }
+
+  async function syncNow() {
+    if (!navigator.onLine) {
+      setStatus("Offline");
+      return;
+    }
+    try {
+      const hasToken = await ensureToken();
+      if (!hasToken) return;
+      await compareAndSync({ askBeforeUpload: false });
+    } catch (error) {
+      console.error(error);
+      setStatus("Erro ao sincronizar");
+    }
+  }
+
+  async function compareAndSync({ askBeforeUpload }) {
+    setStatus("Sincronizando...");
     const file = await findOrCreateFile();
     if (!file) return;
     const remotePayload = await downloadPayload(file.id);
@@ -112,51 +162,41 @@
       await uploadState();
       return;
     }
+
     const remoteTime = Date.parse(remotePayload.updatedAt || 0);
     const localTime = Date.parse(localStorage.getItem("financeiro-academico-local-updated-at") || 0);
+
     if (remoteTime > localTime) {
-      if (confirm("Existe um backup mais recente no Google Drive. Deseja restaurar esses dados neste dispositivo?")) {
+      if (confirm("O backup do Google Drive é mais recente. Deseja atualizar os dados locais deste dispositivo?")) {
         isApplyingRemote = true;
         applyState(remotePayload.data);
         isApplyingRemote = false;
         markSynced(remotePayload.updatedAt);
+        setStatus("Sincronizado");
+        return;
       }
-    } else if (localTime > remoteTime) {
-      if (confirm("Existem dados locais mais recentes. Deseja enviar estes dados para o Google Drive?")) {
-        await uploadState();
-      }
-    } else {
-      markSynced(remotePayload.updatedAt);
+      setStatus("Sincronizado");
+      return;
     }
-    setStatus("Sincronizado");
-  }
 
-  async function syncNow() {
-    if (!accessToken) {
-      signIn();
+    if (localTime > remoteTime) {
+      if (!askBeforeUpload || confirm("Os dados locais são mais recentes. Deseja enviar estes dados para o Google Drive?")) {
+        await uploadState();
+        return;
+      }
+      setStatus("Sincronizado");
       return;
     }
-    if (!navigator.onLine) {
-      setStatus("Offline");
-      return;
-    }
-    setStatus("Sincronizando");
-    try {
-      await findOrCreateFile();
-      await uploadState();
-    } catch (error) {
-      console.error(error);
-      setStatus("Erro");
-    }
+
+    markSynced(remotePayload.updatedAt);
+    setStatus("Dados já atualizados");
   }
 
   async function restoreFromDrive() {
-    if (!accessToken) {
-      signIn();
-      return;
-    }
+    const hasToken = await ensureToken();
+    if (!hasToken) return;
     if (!confirm("Restaurar o backup do Google Drive e substituir os dados locais deste dispositivo?")) return;
-    setStatus("Sincronizando");
+    setStatus("Sincronizando...");
     try {
       const file = await findOrCreateFile();
       const payload = await downloadPayload(file.id);
@@ -266,6 +306,13 @@
         ...(options.headers || {}),
       },
     });
+    if (response.status === 401) {
+      accessToken = "";
+      const renewed = await requestTokenSilently();
+      if (renewed) return request(url, options);
+      setStatus("Faça login para sincronizar");
+      throw new Error("Google Drive token expirado");
+    }
     if (!response.ok) throw new Error(`Google Drive API ${response.status}`);
     return response.json();
   }
