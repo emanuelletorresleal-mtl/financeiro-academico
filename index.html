@@ -128,6 +128,7 @@
               <h2>Configuração inicial</h2>
               <span>Valores usados nos cálculos automáticos</span>
             </div>
+            <div class="action-row"><button class="primary-button" data-add="configItems" type="button">➕ Adicionar item de configuração</button></div>
             <div id="settingsForm" class="form-grid"></div>
           </article>
         </section>
@@ -142,7 +143,7 @@
             <div class="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Nome</th><th>Valor</th><th>Tipo</th><th>Parcelas</th><th>Ações</th></tr>
+                  <tr><th>Nome</th><th>Valor</th><th>Tipo</th><th>Recebimento</th><th>Status</th><th>Parcelas</th><th>Ações</th></tr>
                 </thead>
                 <tbody id="incomeTable"></tbody>
               </table>
@@ -160,7 +161,7 @@
             <div class="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Despesa</th><th>Mensal</th><th>Total</th><th>Cartão</th><th>Parcela</th><th>Quitação</th><th>Status</th><th>Ações</th></tr>
+                  <tr><th>Despesa</th><th>Mensal</th><th>Total</th><th>Pagamento</th><th>Cartão</th><th>Parcela</th><th>Quitação</th><th>Status</th><th>Ações</th></tr>
                 </thead>
                 <tbody id="debtTable"></tbody>
               </table>
@@ -276,6 +277,10 @@
               Seus dados ficam salvos apenas neste dispositivo, a menos que você exporte um backup manualmente.
             </div>
             <div class="backup-actions">
+              <button class="primary-button" id="driveLogin" type="button">Entrar com Google</button>
+              <button class="ghost-button" id="driveLogout" type="button">Sair</button>
+              <button class="primary-button" id="driveSyncNow" type="button">Sincronizar agora</button>
+              <button class="ghost-button" id="driveRestore" type="button">Restaurar backup do Drive</button>
               <button class="primary-button" id="exportJson" type="button">Exportar backup JSON</button>
               <button class="ghost-button" id="importJsonButton" type="button">Importar backup JSON</button>
               <input id="importJsonInput" type="file" accept="application/json,.json" hidden />
@@ -284,6 +289,10 @@
               <button class="primary-button" id="backupPdf" type="button">Exportar PDF</button>
             </div>
             <div class="install-grid">
+              <article class="report-card">
+                <strong>Sincronização Google Drive</strong>
+                <p id="driveStatusDetails">Modo local. Configure o Client ID para sincronizar em nuvem.</p>
+              </article>
               <article class="report-card">
                 <strong>Computador</strong>
                 <p>Abra o arquivo index.html no Chrome, Edge ou Firefox, ou sirva a pasta por um servidor local para ativar a instalação PWA.</p>
@@ -311,7 +320,11 @@
         <form id="modalForm" class="modal-form"></form>
       </div>
     </div>
+    <div class="toast" id="appToast" hidden></div>
 
-    <script type="module" src="app.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="./google-drive-config.js"></script>
+    <script src="./google-drive-sync.js"></script>
+    <script src="./app.js"></script>
   </body>
 </html>

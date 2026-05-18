@@ -5,6 +5,8 @@ const localAssets = [
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./google-drive-config.js",
+  "./google-drive-sync.js",
   "./manifest.webmanifest",
   "./icon.svg",
   "./icon-192.svg",

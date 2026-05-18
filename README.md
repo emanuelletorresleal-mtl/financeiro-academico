@@ -68,7 +68,7 @@ No Android Studio:
 
 ## Backup e Transferência de Dados
 
-Sem banco em nuvem, os dados ficam no dispositivo usado. Para transferir dados entre computador e celular:
+Sem login Google, os dados ficam no dispositivo usado. Para transferir dados manualmente entre computador e celular:
 
 1. No app, abra **Backup**.
 2. Clique em **Exportar backup JSON**.
@@ -81,6 +81,71 @@ Também continuam disponíveis:
 - Exportar CSV
 - Exportar Excel
 - Exportar PDF
+
+## Sincronização Google Drive
+
+O app pode sincronizar gratuitamente usando um único arquivo JSON no Google Drive:
+
+```text
+financeiro-academico-data.json
+```
+
+Formato salvo:
+
+```json
+{
+  "updatedAt": "2026-05-18T00:00:00.000Z",
+  "data": {}
+}
+```
+
+Características:
+
+- Usa `localStorage` como armazenamento principal offline.
+- Usa Google Drive apenas como backup/sincronização pessoal.
+- Não usa Firebase, Supabase ou backend próprio.
+- Usa `https://www.googleapis.com/auth/drive.file` para o arquivo do app e `profile email` apenas para exibir nome, foto e e-mail.
+- Salva alterações no Drive após 5 segundos sem novas mudanças.
+- Continua funcionando sem login Google.
+
+### Configurar Google Cloud
+
+1. Acesse o Google Cloud Console.
+2. Crie um projeto.
+3. Ative a **Google Drive API**.
+4. Configure a tela de consentimento OAuth.
+5. Crie uma credencial **OAuth Client ID** do tipo **Web application**.
+6. Em **Authorized JavaScript origins**, adicione:
+
+```text
+https://emanuelletorresleal-mtl.github.io
+```
+
+7. Em **Authorized redirect URIs**, adicione:
+
+```text
+https://emanuelletorresleal-mtl.github.io/financeiro-academico/
+```
+
+8. Copie o Client ID.
+9. Cole em `google-drive-config.js`:
+
+```js
+clientId: "SEU_CLIENT_ID.apps.googleusercontent.com"
+```
+
+10. Faça deploy no GitHub Pages.
+
+### Usar no Notebook e Celular
+
+1. Abra o app no notebook.
+2. Entre com Google na seção **Backup**.
+3. Clique em **Sincronizar agora** ou apenas altere dados e aguarde o envio automático.
+4. Abra o app no celular.
+5. Entre com a mesma conta Google.
+6. Restaure o backup do Drive quando solicitado.
+
+Se estiver offline, o app continua salvando localmente. Quando a internet voltar, use **Sincronizar agora** ou aguarde a próxima alteração.
 
 Mensagem de privacidade exibida no app:
 
@@ -110,6 +175,3 @@ Configuração atual:
 - Backup JSON para migração manual.
 - Funcionamento offline como PWA.
 
-## Firebase Opcional
-
-Os arquivos `firebase-config.js`, `auth.js`, `cloud-sync.js`, `firebase.rules` e `firebase.json` permanecem no projeto caso você queira ativar sincronização em nuvem no futuro. Para uso local gratuito, eles não são necessários.

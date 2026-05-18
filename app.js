@@ -3,6 +3,8 @@ const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "
 const today = new Date();
 let scheduleCloudSave = () => {};
 let deferredInstallPrompt = null;
+let driveStatus = { status: "Modo local", connected: false, lastSyncAt: "" };
+let suppressSyncSave = false;
 
 function uid() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
@@ -87,7 +89,18 @@ const defaultState = {
     ruValue: 3,
     ruDays: 20,
     emergencyTarget: 6300,
+    variableLimit: 900,
+    creditCardLimit: 900,
   },
+  configItems: [
+    { id: uid(), key: "scholarship", label: "Bolsa mensal", value: 2100, type: "currency", required: true },
+    { id: uid(), key: "temporaryIncome", label: "Renda extra", value: 200, type: "currency", required: true },
+    { id: uid(), key: "savingsGoal", label: "Meta de reserva mensal", value: 300, type: "currency", required: true },
+    { id: uid(), key: "ruValue", label: "Valor do RU", value: 3, type: "currency", required: true },
+    { id: uid(), key: "ruDays", label: "Dias de uso do RU por mês", value: 20, type: "number", required: true },
+    { id: uid(), key: "variableLimit", label: "Limite mensal desejado para gastos variáveis", value: 900, type: "currency", required: false },
+    { id: uid(), key: "creditCardLimit", label: "Limite mensal para cartão de crédito", value: 900, type: "currency", required: false },
+  ],
   categories: defaultCategories,
   subcategories: [
     { id: uid(), name: "RU almoço", categoryId: catId("Restaurante Universitário (RU)"), icon: "RU" },
@@ -99,8 +112,8 @@ const defaultState = {
   paymentMethods: defaultPaymentMethods,
   accounts: defaultAccounts,
   incomes: [
-    { id: uid(), name: "Bolsa de mestrado", value: 2100, type: "Fixa", installments: 0, current: 0 },
-    { id: uid(), name: "Venda JBL", value: 200, type: "Temporária", installments: 6, current: 1 },
+    { id: uid(), name: "Bolsa de mestrado", value: 2100, type: "Fixa", receivedAt: isoDate(today), installments: 0, current: 0, status: "ativa" },
+    { id: uid(), name: "Venda JBL", value: 200, type: "Temporária", receivedAt: isoDate(today), installments: 6, current: 1, status: "ativa" },
   ],
   debts: [
     { id: uid(), name: "Aluguel", value: 450, purchaseTotal: 0, cardId: "", total: 0, current: 0, dueDay: 5, status: "ativa" },
@@ -146,14 +159,19 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
+  if (suppressSyncSave) return;
+  localStorage.setItem("financeiro-academico-local-updated-at", new Date().toISOString());
   scheduleCloudSave();
 }
 
 function migrateState() {
   state.settings = { ...defaultState.settings, ...(state.settings || {}) };
+  state.configItems = Array.isArray(state.configItems) ? state.configItems : settingsToConfigItems(state.settings);
   for (const key of ["categories", "subcategories", "banks", "cards", "paymentMethods", "accounts", "incomes", "debts", "expenses", "ruTransactions", "goals"]) {
     state[key] = Array.isArray(state[key]) ? state[key] : clone(defaultState[key]);
   }
+  mergeDefaults("configItems", defaultState.configItems, "key");
+  syncConfigItemsToSettings();
   mergeDefaults("categories", defaultState.categories, "name");
   mergeDefaults("banks", defaultState.banks, "name");
   mergeDefaults("cards", defaultState.cards, "name");
@@ -172,10 +190,26 @@ function migrateState() {
   state.debts = state.debts.map((debt) => ({
     ...debt,
     cardId: resolveId("cards", debt.cardId || debt.card, ""),
+    paymentMethodId: resolveId("paymentMethods", debt.paymentMethodId || debt.payment, ""),
     purchaseTotal: Number(debt.purchaseTotal || (debt.total ? debt.total * debt.value : 0)),
     current: Number(debt.current || 0),
     total: Number(debt.total || 0),
   }));
+  state.incomes = state.incomes.map((income) => ({
+    ...income,
+    receivedAt: income.receivedAt || isoDate(today),
+    status: income.status || "ativa",
+  }));
+}
+
+function settingsToConfigItems(settings) {
+  return defaultState.configItems.map((item) => ({ ...clone(item), value: settings?.[item.key] ?? item.value }));
+}
+
+function syncConfigItemsToSettings() {
+  state.configItems.forEach((item) => {
+    if (item.key) state.settings[item.key] = Number(item.value || 0);
+  });
 }
 
 function mergeDefaults(key, defaults, compareKey) {
@@ -227,7 +261,7 @@ function cardAvailable(card) {
 }
 
 function calc() {
-  const income = sum(state.incomes, (item) => Number(item.value));
+  const income = sum(state.incomes.filter((item) => item.status !== "encerrada"), (item) => Number(item.value));
   const fixed = sum(activeDebts(), (item) => Number(item.value));
   const variable = sum(state.expenses, (item) => Number(item.value));
   const ruBalance = ruCreditBalance();
@@ -375,7 +409,7 @@ function projectBalances() {
   const base = calc();
   return Array.from({ length: 6 }, (_, index) => {
     const parcelRelief = sum(state.debts.filter((debt) => debt.total && debt.current + index > debt.total), (debt) => Number(debt.value));
-    const tempIncomeDrop = state.incomes.some((income) => income.type === "Temporária" && income.installments && income.current + index > income.installments) ? Number(state.settings.temporaryIncome) : 0;
+    const tempIncomeDrop = state.incomes.some((income) => income.status !== "encerrada" && income.type === "Temporária" && income.installments && income.current + index > income.installments) ? Number(state.settings.temporaryIncome) : 0;
     const date = new Date(today.getFullYear(), today.getMonth() + index, 1);
     return { month: date.toLocaleDateString("pt-BR", { month: "short" }), balance: base.balance + parcelRelief - tempIncomeDrop };
   });
@@ -387,6 +421,9 @@ function renderAlerts() {
   const alerts = [];
   if (data.balance < 0) alerts.push(`<div class="alert danger">Saldo negativo de ${currency.format(Math.abs(data.balance))}. Revise a maior categoria variável antes de assumir novos gastos.</div>`);
   if (data.committed > 80) alerts.push(`<div class="alert">A renda comprometida está em ${data.committed.toFixed(1)}%. Priorize quitação de parcelas curtas para liberar caixa.</div>`);
+  if (state.settings.variableLimit && data.variable > state.settings.variableLimit) alerts.push(`<div class="alert">Gastos variáveis acima do limite desejado: ${currency.format(data.variable)} de ${currency.format(state.settings.variableLimit)}.</div>`);
+  const creditUsage = sum(cardDashboardRows().filter((row) => row.label !== "Parceladas"), (row) => row.value);
+  if (state.settings.creditCardLimit && creditUsage > state.settings.creditCardLimit) alerts.push(`<div class="alert">Uso de cartão acima do limite mensal definido: ${currency.format(creditUsage)} de ${currency.format(state.settings.creditCardLimit)}.</div>`);
   if (data.ruBalance < state.settings.ruValue * 3) alerts.push(`<div class="alert">Saldo do RU baixo: ${currency.format(data.ruBalance)}. Planeje uma recarga para evitar gasto maior com alimentação fora do campus.</div>`);
   if (upcoming.length) alerts.push(`<div class="alert">Vencimentos próximos: ${upcoming.map((debt) => `${esc(debt.name)} dia ${debt.dueDay}`).join(", ")}.</div>`);
   document.querySelector("#alertStrip").innerHTML = alerts.join("");
@@ -403,21 +440,14 @@ function renderTables() {
 }
 
 function renderSettings() {
-  const labels = {
-    scholarship: "Bolsa mensal",
-    temporaryIncome: "Renda extra temporária",
-    savingsGoal: "Meta mensal de reserva",
-    ruValue: "Valor do RU",
-    ruDays: "Dias de uso do RU por mês",
-    emergencyTarget: "Meta de reserva emergencial",
-  };
-  document.querySelector("#settingsForm").innerHTML = Object.entries(labels)
-    .map(([key, label]) => `<article class="entity-item"><div><strong>${esc(label)}</strong><small>${currencyOrNumber(key, state.settings[key])}</small></div><button class="secondary-button" data-edit-setting="${key}" type="button">✏️ Editar</button></article>`)
+  document.querySelector("#settingsForm").innerHTML = state.configItems
+    .map((item) => `<article class="entity-item"><div><strong>${esc(item.label)}</strong><small>${formatConfigValue(item)}</small></div>${actions("configItems", item.id)}</article>`)
     .join("");
 }
 
-function currencyOrNumber(key, value) {
-  return key === "ruDays" ? `${value} dias` : currency.format(Number(value || 0));
+function formatConfigValue(item) {
+  if (item.type === "number") return `${Number(item.value || 0)}${item.key === "ruDays" ? " dias" : ""}`;
+  return currency.format(Number(item.value || 0));
 }
 
 function actions(key, id) {
@@ -431,17 +461,18 @@ function logo(item, fallback = "?") {
 }
 
 function incomeRow(item) {
-  return `<tr><td>${esc(item.name)}</td><td>${currency.format(item.value)}</td><td>${esc(item.type)}</td><td>${item.installments ? `${item.current}/${item.installments}` : "Recorrente"}</td><td>${actions("incomes", item.id)}</td></tr>`;
+  return `<tr><td>${esc(item.name)}</td><td>${currency.format(item.value)}</td><td>${esc(item.type)}</td><td>${formatDate(item.receivedAt || isoDate(today))}</td><td>${esc(item.status || "ativa")}</td><td>${item.installments ? `${item.current}/${item.installments}` : "Recorrente"}</td><td>${actions("incomes", item.id)}</td></tr>`;
 }
 
 function debtRow(item) {
   const card = findItem("cards", item.cardId);
+  const payment = findItem("paymentMethods", item.paymentMethodId);
   const isDue = item.status === "ativa" && item.dueDay >= today.getDate() && item.dueDay - today.getDate() <= 5;
   const statusClass = item.status === "quitada" ? "done" : isDue ? "due" : "";
   const installment = item.total ? `${item.current}/${item.total}` : "Recorrente";
   const remaining = item.total ? Math.max(item.total - item.current + 1, 0) : 0;
   const payoff = item.total ? payoffDate(item).toLocaleDateString("pt-BR") : "Recorrente";
-  return `<tr><td>${esc(item.name)}</td><td>${currency.format(item.value)}</td><td>${item.purchaseTotal ? currency.format(item.purchaseTotal) : "Recorrente"}</td><td><span class="name-cell">${logo(card, "CC")}${esc(card?.name || "Não se aplica")}</span></td><td>${installment}<br><small>${remaining} restante(s)</small></td><td>${payoff}</td><td><button class="status ${statusClass}" data-pay="${item.id}" type="button">${esc(item.status)}</button></td><td>${actions("debts", item.id)}</td></tr>`;
+  return `<tr><td>${esc(item.name)}</td><td>${currency.format(item.value)}</td><td>${item.purchaseTotal ? currency.format(item.purchaseTotal) : "Recorrente"}</td><td><span class="name-cell">${logo(payment, "P")}${esc(payment?.name || "Não informado")}</span></td><td><span class="name-cell">${logo(card, "CC")}${esc(card?.name || "Não se aplica")}</span></td><td>${installment}<br><small>${remaining} restante(s)</small></td><td>${payoff}</td><td><button class="status ${statusClass}" data-pay="${item.id}" type="button">${esc(item.status)}</button></td><td>${actions("debts", item.id)}</td></tr>`;
 }
 
 function expenseRow(item) {
@@ -537,11 +568,23 @@ function renderBackupStatus() {
   const bytes = new Blob([localStorage.getItem(storageKey) || ""]).size;
   const date = new Date().toLocaleString("pt-BR");
   target.textContent = `Dados locais ativos · ${(bytes / 1024).toFixed(1)} KB · ${date}`;
+  renderDriveStatus();
+}
+
+function renderDriveStatus() {
+  const top = document.querySelector("#syncStatus");
+  const details = document.querySelector("#driveStatusDetails");
+  if (top) top.textContent = driveStatus.status;
+  if (details) {
+    const last = driveStatus.lastSyncAt ? new Date(driveStatus.lastSyncAt).toLocaleString("pt-BR") : "Nunca";
+    details.textContent = `${driveStatus.status}. Última sincronização: ${last}. ${driveStatus.connected ? "Conta Google conectada." : "Modo local disponível sem login."}`;
+  }
 }
 
 const modalConfigs = {
-  incomes: { title: "Receita", fields: [["name", "Nome", "text"], ["value", "Valor", "number"], ["type", "Tipo", "select", ["Fixa", "Temporária", "Extra"]], ["installments", "Parcelas", "number"], ["current", "Parcela atual", "number"]] },
-  debts: { title: "Dívida ou compra parcelada", fields: [["name", "Despesa", "text"], ["value", "Valor mensal", "number"], ["purchaseTotal", "Valor total", "number"], ["cardId", "Cartão", "select", () => optionList("cards", true)], ["total", "Total parcelas", "number"], ["current", "Parcela atual", "number"], ["dueDay", "Vencimento", "number"], ["status", "Status", "select", ["ativa", "quitada"]]] },
+  configItems: { title: "Item de configuração", required: ["label", "key"], fields: [["label", "Nome do item", "text"], ["key", "Chave interna", "text"], ["value", "Valor", "number"], ["type", "Tipo", "select", ["currency", "number"]]] },
+  incomes: { title: "Receita", required: ["name"], fields: [["name", "Nome", "text"], ["value", "Valor", "number"], ["type", "Tipo", "select", ["Fixa", "Temporária", "Eventual"]], ["receivedAt", "Data de recebimento", "date"], ["installments", "Quantidade de parcelas", "number"], ["current", "Parcela atual", "number"], ["status", "Status", "select", ["ativa", "encerrada"]]] },
+  debts: { title: "Dívida ou compra parcelada", required: ["name"], fields: [["name", "Despesa", "text"], ["value", "Valor", "number"], ["purchaseTotal", "Valor total", "number"], ["paymentMethodId", "Forma de pagamento", "select", () => optionList("paymentMethods", true)], ["cardId", "Cartão", "select", () => optionList("cards", true)], ["total", "Número total de parcelas", "number"], ["current", "Parcela atual", "number"], ["dueDay", "Data de vencimento", "number"], ["status", "Status", "select", ["ativa", "quitada"]]] },
   expenses: { title: "Gasto variável", fields: [["date", "Data", "date"], ["categoryId", "Categoria", "select", () => optionList("categories")], ["subcategoryId", "Subcategoria", "select", () => optionList("subcategories", true)], ["description", "Descrição", "text"], ["value", "Valor", "number"], ["paymentMethodId", "Pagamento", "select", () => optionList("paymentMethods")], ["accountId", "Conta", "select", () => optionList("accounts", true)], ["cardId", "Cartão", "select", () => optionList("cards", true)], ["installments", "Parcelas", "number"], ["currentInstallment", "Parcela atual", "number"]] },
   ruTransactions: { title: "Movimento do RU", fields: [["date", "Data", "date"], ["type", "Tipo", "select", ["Recarga", "Consumo"]], ["description", "Descrição", "text"], ["value", "Valor", "number"]] },
   goals: { title: "Meta financeira", fields: [["name", "Meta", "text"], ["target", "Valor alvo", "number"], ["saved", "Valor guardado", "number"]] },
@@ -570,8 +613,9 @@ function openModal(entity, id = null, settingKey = null) {
 function defaultsFor(entity) {
   const base = { id: uid(), color: "#147a4b", status: "ativo" };
   const byEntity = {
-    incomes: { name: "", value: 0, type: "Fixa", installments: 0, current: 1 },
-    debts: { name: "", value: 0, purchaseTotal: 0, cardId: "", total: 0, current: 1, dueDay: 10, status: "ativa" },
+    configItems: { label: "", key: "", value: 0, type: "currency" },
+    incomes: { name: "", value: 0, type: "Fixa", receivedAt: isoDate(today), installments: 0, current: 1, status: "ativa" },
+    debts: { name: "", value: 0, purchaseTotal: 0, paymentMethodId: "", cardId: "", total: 0, current: 1, dueDay: 10, status: "ativa" },
     expenses: { date: isoDate(today), categoryId: state.categories[0]?.id || "", subcategoryId: "", description: "", value: 0, paymentMethodId: state.paymentMethods[0]?.id || "", accountId: "", cardId: "", installments: 1, currentInstallment: 1 },
     ruTransactions: { date: isoDate(today), type: "Recarga", description: "", value: 0 },
     goals: { name: "", target: 0, saved: 0 },
@@ -602,11 +646,11 @@ function fieldHtml(name, label, type, value, options = []) {
   if (type === "file") {
     return `<div class="field${full}"><label for="modal-${name}">${esc(label)}</label><input id="modal-${name}" name="${name}" type="file" accept="image/*"><span class="file-hint">Opcional. Se vazio, o ícone padrão será usado.</span></div>`;
   }
-  return `<div class="field${full}"><label for="modal-${name}">${esc(label)}</label><input id="modal-${name}" name="${name}" type="${type}" value="${esc(value ?? "")}" ${type === "number" ? 'step="0.01"' : ""}></div>`;
+  return `<div class="field${full}"><label for="modal-${name}">${esc(label)}</label><input id="modal-${name}" name="${name}" type="${type}" value="${esc(value ?? "")}" ${type === "number" ? 'step="0.01" min="0"' : ""}></div>`;
 }
 
 function modalActions() {
-  return `<div class="modal-actions"><button class="ghost-button" id="cancelModal" type="button">Cancelar</button><button class="primary-button" type="submit">Salvar</button></div>`;
+  return `<div class="modal-message" id="modalMessage" aria-live="polite"></div><div class="modal-actions"><button class="ghost-button" id="cancelModal" type="button">Cancelar</button><button class="primary-button" type="submit">Salvar</button></div>`;
 }
 
 async function readFile(input) {
@@ -633,6 +677,11 @@ async function submitModal(event) {
   }
   const entity = modalContext.entity;
   const config = modalConfigs[entity];
+  const validation = validateModal(form, config);
+  if (!validation.ok) {
+    showModalMessage(validation.message, "error");
+    return;
+  }
   const original = modalContext.id ? clone(findItem(entity, modalContext.id)) : defaultsFor(entity);
   const item = { ...original };
   for (const [name, , type] of config.fields) {
@@ -645,14 +694,51 @@ async function submitModal(event) {
     item[name] = type === "number" ? Number(value || 0) : value;
   }
   if (entity === "expenses") maybeCreateRuConsumption(item);
+  if (entity === "configItems") syncConfigItemToSettings(item);
   if (modalContext.id) {
     const index = state[entity].findIndex((entry) => entry.id === modalContext.id);
     state[entity][index] = item;
   } else {
     state[entity].push(item);
   }
+  syncConfigItemsToSettings();
   closeModal();
   render();
+  notify("Registro salvo com sucesso.");
+}
+
+function validateModal(form, config) {
+  const required = config.required || [];
+  for (const name of required) {
+    if (!String(form.elements[name]?.value || "").trim()) return { ok: false, message: "Preencha os campos obrigatórios." };
+  }
+  for (const input of form.querySelectorAll('input[type="number"]')) {
+    if (Number(input.value || 0) < 0) return { ok: false, message: "Valores negativos não são permitidos neste campo." };
+  }
+  return { ok: true };
+}
+
+function showModalMessage(message, type = "info") {
+  const target = document.querySelector("#modalMessage");
+  if (!target) return;
+  target.textContent = message;
+  target.className = `modal-message ${type}`;
+}
+
+function notify(message) {
+  const target = document.querySelector("#appToast");
+  if (!target) return alert(message);
+  target.textContent = message;
+  target.hidden = false;
+  clearTimeout(notify.timer);
+  notify.timer = setTimeout(() => {
+    target.hidden = true;
+  }, 2600);
+}
+
+function syncConfigItemToSettings(item) {
+  if (!item.key) return;
+  state.settings[item.key] = Number(item.value || 0);
 }
 
 function maybeCreateRuConsumption(expense) {
@@ -688,9 +774,11 @@ document.addEventListener("click", (event) => {
   const editSetting = event.target.closest("[data-edit-setting]");
   if (editSetting) openModal(null, null, editSetting.dataset.editSetting);
   const remove = event.target.closest("[data-remove]");
-  if (remove && confirm("Excluir este registro? Essa ação atualiza dashboard, relatórios e dados salvos.")) {
+  if (remove && confirm("Tem certeza que deseja excluir este item? Essa ação não poderá ser desfeita.")) {
     state[remove.dataset.remove] = state[remove.dataset.remove].filter((item) => item.id !== remove.dataset.id);
+    syncConfigItemsToSettings();
     render();
+    notify("Item excluído com sucesso.");
   }
   const pay = event.target.closest("[data-pay]");
   if (pay) {
@@ -719,6 +807,10 @@ document.querySelector("#importJsonInput").addEventListener("change", importJson
 document.querySelector("#backupExcel").addEventListener("click", exportExcel);
 document.querySelector("#backupPdf").addEventListener("click", () => window.print());
 document.querySelector("#installPwa").addEventListener("click", installPwa);
+document.querySelector("#driveLogin").addEventListener("click", () => window.GoogleDriveSync?.signIn());
+document.querySelector("#driveLogout").addEventListener("click", () => window.GoogleDriveSync?.signOut());
+document.querySelector("#driveSyncNow").addEventListener("click", () => window.GoogleDriveSync?.syncNow());
+document.querySelector("#driveRestore").addEventListener("click", () => window.GoogleDriveSync?.restoreFromDrive());
 
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
@@ -804,17 +896,57 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
 
 initLocalMode();
 
+suppressSyncSave = true;
 render();
+suppressSyncSave = false;
 
 function initLocalMode() {
   document.querySelector("#loginScreen").hidden = true;
   document.querySelector(".app-shell").hidden = false;
   document.querySelector("#userPanel").hidden = true;
-  document.querySelector("#syncStatus").textContent = navigator.onLine ? "Modo local" : "Modo offline";
+  driveStatus.status = navigator.onLine ? "Modo local" : "Offline";
+  renderDriveStatus();
   window.addEventListener("online", () => {
-    document.querySelector("#syncStatus").textContent = "Modo local";
+    if (!driveStatus.connected) driveStatus.status = "Modo local";
+    renderDriveStatus();
   });
   window.addEventListener("offline", () => {
-    document.querySelector("#syncStatus").textContent = "Modo offline";
+    driveStatus.status = "Offline";
+    renderDriveStatus();
+  });
+  initDriveSync();
+}
+
+function initDriveSync() {
+  if (!window.GoogleDriveSync) return;
+  scheduleCloudSave = window.GoogleDriveSync.scheduleSave;
+  window.GoogleDriveSync.init({
+    getState: () => clone(state),
+    applyState: (remoteState) => {
+      state = remoteState;
+      migrateState();
+      suppressSyncSave = true;
+      render();
+      suppressSyncSave = false;
+    },
+    onStatus: (nextStatus) => {
+      driveStatus = { ...driveStatus, ...nextStatus };
+      renderDriveStatus();
+    },
+    onUser: (user) => {
+      const panel = document.querySelector("#userPanel");
+      if (!user) {
+        panel.hidden = true;
+        driveStatus.connected = false;
+        renderDriveStatus();
+        return;
+      }
+      panel.hidden = false;
+      document.querySelector("#userPhoto").src = user.photo || "";
+      document.querySelector("#userName").textContent = user.name || "Conta Google";
+      document.querySelector("#userEmail").textContent = user.email || "";
+      driveStatus.connected = true;
+      renderDriveStatus();
+    },
   });
 }

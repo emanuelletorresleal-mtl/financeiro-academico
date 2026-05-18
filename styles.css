@@ -754,8 +754,20 @@ th {
 }
 
 .modal-form .field.full,
-.modal-actions {
+.modal-actions,
+.modal-message {
   grid-column: 1 / -1;
+}
+
+.modal-message {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.modal-message.error {
+  color: var(--danger);
+  font-weight: 800;
 }
 
 .modal-actions {
@@ -773,6 +785,25 @@ th {
 .file-hint {
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 30;
+  max-width: min(360px, calc(100vw - 36px));
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--green-900);
+  color: var(--white);
+  box-shadow: var(--shadow);
+  font-weight: 800;
+}
+
+.toast[hidden] {
+  display: none;
 }
 
 .export-row {
@@ -859,6 +890,21 @@ th {
 
   .bar-row {
     grid-template-columns: 80px minmax(0, 1fr) 78px;
+  }
+
+  .row-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    min-width: 116px;
+  }
+
+  .secondary-button,
+  .icon-button {
+    width: 100%;
+  }
+
+  .entity-item {
+    grid-template-columns: 1fr;
   }
 }
 
