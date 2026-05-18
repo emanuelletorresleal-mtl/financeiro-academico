@@ -37,6 +37,7 @@
           <button class="nav-tab" data-section="expenses">Gastos</button>
           <button class="nav-tab" data-section="goals">Metas</button>
           <button class="nav-tab" data-section="registry">Cadastros</button>
+          <button class="nav-tab" data-section="backup">Backup</button>
           <button class="nav-tab" data-section="reports">Relatórios</button>
         </nav>
       </aside>
@@ -263,6 +264,40 @@
             <button class="primary-button" id="exportPdf2" type="button">PDF</button>
             <button class="primary-button" id="exportExcel2" type="button">Excel</button>
           </div>
+        </section>
+
+        <section id="backup" class="section">
+          <article class="panel">
+            <div class="panel-header">
+              <h2>Backup e Instalação</h2>
+              <span id="localStorageStatus">Armazenamento local</span>
+            </div>
+            <div class="alert">
+              Seus dados ficam salvos apenas neste dispositivo, a menos que você exporte um backup manualmente.
+            </div>
+            <div class="backup-actions">
+              <button class="primary-button" id="exportJson" type="button">Exportar backup JSON</button>
+              <button class="ghost-button" id="importJsonButton" type="button">Importar backup JSON</button>
+              <input id="importJsonInput" type="file" accept="application/json,.json" hidden />
+              <button class="primary-button" id="installPwa" type="button">Instalar aplicativo</button>
+              <button class="primary-button" id="backupExcel" type="button">Exportar Excel</button>
+              <button class="primary-button" id="backupPdf" type="button">Exportar PDF</button>
+            </div>
+            <div class="install-grid">
+              <article class="report-card">
+                <strong>Computador</strong>
+                <p>Abra o arquivo index.html no Chrome, Edge ou Firefox, ou sirva a pasta por um servidor local para ativar a instalação PWA.</p>
+              </article>
+              <article class="report-card">
+                <strong>Celular Android como PWA</strong>
+                <p>Abra a URL no Chrome, toque no menu e escolha Adicionar à tela inicial ou Instalar aplicativo.</p>
+              </article>
+              <article class="report-card">
+                <strong>APK sem Play Store</strong>
+                <p>Use Capacitor e Android Studio para gerar um APK e instalar manualmente no celular.</p>
+              </article>
+            </div>
+          </article>
         </section>
       </main>
     </div>

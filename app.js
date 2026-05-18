@@ -1,9 +1,8 @@
-import { initAuthUI } from "./auth.js";
-import { initCloudSync, scheduleCloudSave, setSyncStatus, stopCloudSync } from "./cloud-sync.js";
-
 const storageKey = "financeiro-academico-state";
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const today = new Date();
+let scheduleCloudSave = () => {};
+let deferredInstallPrompt = null;
 
 function uid() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
@@ -249,6 +248,7 @@ function render() {
   renderGoals();
   renderRegistry();
   renderReport();
+  renderBackupStatus();
 }
 
 function renderMetrics() {
@@ -531,6 +531,14 @@ function renderReport() {
   `;
 }
 
+function renderBackupStatus() {
+  const target = document.querySelector("#localStorageStatus");
+  if (!target) return;
+  const bytes = new Blob([localStorage.getItem(storageKey) || ""]).size;
+  const date = new Date().toLocaleString("pt-BR");
+  target.textContent = `Dados locais ativos · ${(bytes / 1024).toFixed(1)} KB · ${date}`;
+}
+
 const modalConfigs = {
   incomes: { title: "Receita", fields: [["name", "Nome", "text"], ["value", "Valor", "number"], ["type", "Tipo", "select", ["Fixa", "Temporária", "Extra"]], ["installments", "Parcelas", "number"], ["current", "Parcela atual", "number"]] },
   debts: { title: "Dívida ou compra parcelada", fields: [["name", "Despesa", "text"], ["value", "Valor mensal", "number"], ["purchaseTotal", "Valor total", "number"], ["cardId", "Cartão", "select", () => optionList("cards", true)], ["total", "Total parcelas", "number"], ["current", "Parcela atual", "number"], ["dueDay", "Vencimento", "number"], ["status", "Status", "select", ["ativa", "quitada"]]] },
@@ -705,6 +713,18 @@ document.querySelector("#resetData").addEventListener("click", () => {
 document.querySelectorAll("#printReport, #exportPdf2").forEach((button) => button.addEventListener("click", () => window.print()));
 document.querySelectorAll("#exportExcel, #exportExcel2").forEach((button) => button.addEventListener("click", exportExcel));
 document.querySelector("#exportCsv").addEventListener("click", exportCsv);
+document.querySelector("#exportJson").addEventListener("click", exportJsonBackup);
+document.querySelector("#importJsonButton").addEventListener("click", () => document.querySelector("#importJsonInput").click());
+document.querySelector("#importJsonInput").addEventListener("change", importJsonBackup);
+document.querySelector("#backupExcel").addEventListener("click", exportExcel);
+document.querySelector("#backupPdf").addEventListener("click", () => window.print());
+document.querySelector("#installPwa").addEventListener("click", installPwa);
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  document.querySelector("#installPwa").disabled = false;
+});
 
 function exportCsv() {
   const rows = [["Tipo", "Nome/Data", "Categoria", "Subcategoria", "Descrição", "Pagamento", "Conta", "Cartão", "Parcelas", "Valor"]];
@@ -718,6 +738,50 @@ function exportCsv() {
 function exportExcel() {
   const html = `<html><head><meta charset="UTF-8"></head><body>${document.querySelector("#reportContent").outerHTML}<h2>Receitas</h2>${tableHtml("#incomeTable")}<h2>Dívidas</h2>${tableHtml("#debtTable")}<h2>Gastos</h2>${tableHtml("#expenseTable")}<h2>RU</h2>${tableHtml("#ruTable")}</body></html>`;
   download("financeiro-academico.xls", html, "application/vnd.ms-excel");
+}
+
+function exportJsonBackup() {
+  const payload = {
+    app: "Financeiro Acadêmico",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    state,
+  };
+  download(`financeiro-academico-backup-${isoDate(new Date())}.json`, JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
+}
+
+function importJsonBackup(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result);
+      const importedState = payload.state || payload.appState || payload;
+      if (!importedState || typeof importedState !== "object") throw new Error("Arquivo inválido");
+      if (!confirm("Importar este backup e substituir os dados atuais deste dispositivo?")) return;
+      state = importedState;
+      migrateState();
+      render();
+      alert("Backup importado com sucesso.");
+    } catch (error) {
+      alert("Não foi possível importar o backup JSON.");
+      console.error(error);
+    } finally {
+      event.target.value = "";
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function installPwa() {
+  if (!deferredInstallPrompt) {
+    alert("Quando disponível, use o menu do navegador e escolha 'Instalar aplicativo' ou 'Adicionar à tela inicial'.");
+    return;
+  }
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
 }
 
 function tableHtml(selector) {
@@ -734,31 +798,23 @@ function download(filename, content, type) {
   URL.revokeObjectURL(url);
 }
 
-if ("serviceWorker" in navigator) {
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("./sw.js").catch(() => {});
 }
 
-initAuthUI({
-  onLogin: (user) =>
-    initCloudSync(user, {
-      getState: () => clone(state),
-      applyState: (remoteState) => {
-        state = remoteState;
-        migrateState();
-        render();
-      },
-      onStatus: (message) => {
-        document.querySelector("#syncStatus").textContent = message;
-      },
-    }),
-  onLogout: () => {
-    stopCloudSync();
-    setSyncStatus("Aguardando login");
-  },
-  onError: (error) => {
-    console.error(error);
-    document.querySelector("#syncStatus").textContent = "Erro de autenticação";
-  },
-});
+initLocalMode();
 
 render();
+
+function initLocalMode() {
+  document.querySelector("#loginScreen").hidden = true;
+  document.querySelector(".app-shell").hidden = false;
+  document.querySelector("#userPanel").hidden = true;
+  document.querySelector("#syncStatus").textContent = navigator.onLine ? "Modo local" : "Modo offline";
+  window.addEventListener("online", () => {
+    document.querySelector("#syncStatus").textContent = "Modo local";
+  });
+  window.addEventListener("offline", () => {
+    document.querySelector("#syncStatus").textContent = "Modo offline";
+  });
+}

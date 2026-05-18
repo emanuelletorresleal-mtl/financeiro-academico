@@ -1,0 +1,21 @@
+{
+  "name": "financeiro-academico",
+  "version": "1.0.0",
+  "description": "PWA de controle financeiro pessoal para uso local, instalação PWA e empacotamento Android com Capacitor.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "npx serve .",
+    "cap:init": "npx cap init \"Financeiro Acadêmico\" \"com.emanuelle.financeiroacademico\" --web-dir .",
+    "cap:add:android": "npx cap add android",
+    "cap:copy": "npx cap copy android",
+    "cap:open": "npx cap open android",
+    "android": "npx cap copy android && npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/core": "^7.4.3"
+  },
+  "devDependencies": {}
+}

@@ -185,7 +185,8 @@ h3 {
 
 .topbar-actions,
 .export-row,
-.action-row {
+.action-row,
+.backup-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -642,7 +643,8 @@ th {
 
 .goal-grid,
 .report-grid,
-.registry-grid {
+.registry-grid,
+.install-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
@@ -777,6 +779,11 @@ th {
   margin-top: 14px;
 }
 
+.backup-actions {
+  justify-content: flex-start;
+  margin: 16px 0;
+}
+
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -799,7 +806,8 @@ th {
   .metrics-grid,
   .goal-grid,
   .report-grid,
-  .registry-grid {
+  .registry-grid,
+  .install-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -840,7 +848,8 @@ th {
   .ru-summary,
   .goal-grid,
   .report-grid,
-  .registry-grid {
+  .registry-grid,
+  .install-grid {
     grid-template-columns: 1fr;
   }
 

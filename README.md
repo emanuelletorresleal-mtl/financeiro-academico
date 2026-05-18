@@ -1,67 +1,115 @@
 # Financeiro Acadêmico
 
-Aplicativo web responsivo de controle financeiro pessoal para Emanuelle Torres Leal, mestranda em Engenharia Florestal.
+Aplicativo web/PWA de controle financeiro pessoal para Emanuelle Torres Leal, mestranda em Engenharia Florestal. Funciona gratuitamente no computador e no celular, sem Play Store.
 
-## Como usar
+## Uso no Computador
 
-Preencha `firebase-config.js` com as chaves do app Web criado no console do Firebase. Depois sirva esta pasta por HTTP e abra a URL no navegador.
+Opção mais simples:
 
-Exemplos de servidores locais:
+1. Abra `index.html` no Chrome, Edge ou Firefox.
+2. Use o app normalmente.
+3. Os dados ficam salvos no `localStorage` do navegador.
+
+Opção recomendada para instalar como PWA:
 
 ```bash
 npx serve .
-python -m http.server 8080
 ```
 
-O app mantém `localStorage` como cache local e sincroniza em `users/{uid}/financeData/main` no Cloud Firestore após login com Google.
+Depois abra a URL mostrada no terminal, normalmente `http://localhost:3000`.
 
-## Firebase
-
-1. Crie um projeto no Firebase.
-2. Ative Authentication com provedor Google.
-3. Crie um banco Cloud Firestore.
-4. Copie a configuração Web para `firebase-config.js`.
-5. Publique as regras de segurança de `firebase.rules`.
-
-Estrutura do documento principal:
-
-```text
-users/{uid}/financeData/main
-```
-
-O documento guarda `appState` para restauração fiel e também espelha campos como `settings`, `categories`, `paymentMethods`, `banks`, `cards`, `revenues`, `debts`, `installments`, `variableExpenses`, `goals`, `ru` e `updatedAt`.
-
-## Hospedagem gratuita
-
-Instale e publique com Firebase Hosting:
+Alternativas de servidor local:
 
 ```bash
-npm install -g firebase-tools
-firebase login
-firebase init hosting
-firebase deploy
+python -m http.server 8080
+npx http-server .
 ```
 
-Este projeto já inclui `firebase.json` apontando a hospedagem para a pasta atual e `firebase.rules` para o Firestore.
+## Instalar como PWA no Celular
 
-## Recursos entregues
+1. Sirva o app por uma URL local ou pública.
+2. Abra a URL no Chrome do Android.
+3. Toque no menu do navegador.
+4. Escolha **Adicionar à tela inicial** ou **Instalar aplicativo**.
+5. Abra o **Financeiro Acadêmico** pelo ícone criado.
 
-- Dashboard com indicadores financeiros, gráfico de categorias, receita vs despesas e projeção de saldo.
-- Cadastro de receitas fixas, temporárias e extras.
-- Controle de dívidas, parcelas, vencimentos, status e cronograma de quitação.
-- Registro de gastos variáveis por categoria, forma de pagamento, cartão e quantidade de parcelas.
-- Formas de pagamento: Nubank, Mercado Pago, Pix, débito Banco do Brasil, débito Banco Inter, dinheiro e cartão estudantil do RU.
+Essa alternativa não precisa de Play Store nem APK.
+
+## Gerar APK Android sem Play Store
+
+Este projeto já inclui `package.json` e `capacitor.config.json` para usar Capacitor.
+
+Comandos:
+
+```bash
+npm install
+npm install @capacitor/core @capacitor/cli @capacitor/android
+npx cap init "Financeiro Acadêmico" "com.emanuelle.financeiroacademico"
+npx cap add android
+npx cap copy android
+npx cap open android
+```
+
+No Android Studio:
+
+1. Aguarde o Gradle sincronizar.
+2. Para APK debug: use **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
+3. Para release assinado: use **Build > Generate Signed Bundle / APK**.
+4. O APK debug normalmente fica em `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+## Instalar o APK no Celular
+
+1. Gere o APK no Android Studio.
+2. Copie o arquivo `.apk` para o celular.
+3. No Android, ative **Instalar apps desconhecidos** para o app usado para abrir o APK.
+4. Toque no arquivo `.apk`.
+5. Confirme a instalação.
+6. Abra o **Financeiro Acadêmico**.
+
+## Backup e Transferência de Dados
+
+Sem banco em nuvem, os dados ficam no dispositivo usado. Para transferir dados entre computador e celular:
+
+1. No app, abra **Backup**.
+2. Clique em **Exportar backup JSON**.
+3. Envie o arquivo `.json` para o outro dispositivo.
+4. No outro dispositivo, abra **Backup**.
+5. Clique em **Importar backup JSON**.
+
+Também continuam disponíveis:
+
+- Exportar CSV
+- Exportar Excel
+- Exportar PDF
+
+Mensagem de privacidade exibida no app:
+
+> Seus dados ficam salvos apenas neste dispositivo, a menos que você exporte um backup manualmente.
+
+## PWA
+
+Configuração atual:
+
+- Nome: Financeiro Acadêmico
+- Short name: Financeiro
+- Display: standalone
+- Theme color: verde
+- Background color: branco
+- Ícones: `icon.svg`, `icon-192.svg`, `icon-512.svg`
+- Offline: `sw.js` com cache dos arquivos estáticos
+- Instalação: botão **Instalar aplicativo** na seção **Backup**
+
+## Recursos
+
+- Dashboard com indicadores financeiros, gráfico por categoria, receita vs despesas e projeção de saldo.
+- Receitas, dívidas, compras parceladas, gastos variáveis e metas.
+- Categorias, subcategorias, formas de pagamento, bancos, cartões e contas editáveis.
 - Controle de créditos do RU com recargas, consumo e saldo.
-- Compras parceladas com parcela atual, parcelas restantes, valor total, cartão utilizado e data prevista de quitação.
-- Metas financeiras com progresso visual.
-- Relatório inteligente com recomendações automáticas de economia.
-- Dashboard final com gráficos por categoria, forma de pagamento, cartão e despesas parceladas.
-- CRUD com modais para receitas, dívidas, gastos, metas, categorias, subcategorias, bancos, cartões, contas, formas de pagamento e configurações.
-- Categorias e subcategorias personalizáveis com cor e ícone/sigla.
-- Bancos, contas e cartões com cor, logo personalizada ou ícone padrão.
-- Recalculo automático de limites disponíveis dos cartões, saldo mensal, relatórios e cronograma após cada alteração.
-- Exportação em CSV, Excel e PDF por impressão do navegador.
-- Interface verde/branca, minimalista e responsiva para celular e computador.
-- Login com Google via Firebase Authentication.
-- Sincronização automática em nuvem com Cloud Firestore e cache local/offline.
-- Indicadores de sincronização: carregando, salvando, sincronizado, modo offline e erro.
+- Cronograma de quitação.
+- Relatórios inteligentes.
+- Backup JSON para migração manual.
+- Funcionamento offline como PWA.
+
+## Firebase Opcional
+
+Os arquivos `firebase-config.js`, `auth.js`, `cloud-sync.js`, `firebase.rules` e `firebase.json` permanecem no projeto caso você queira ativar sincronização em nuvem no futuro. Para uso local gratuito, eles não são necessários.
